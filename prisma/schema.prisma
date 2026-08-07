@@ -1,0 +1,181 @@
+// Schema del sistema de gestión de transporte de carga pesada.
+// Los campos de "estado/tipo" se guardan como texto para coincidir exactamente
+// con las cadenas que usa el frontend (p. ej. "En taller", "N. Crédito").
+// La validación de valores permitidos se hace en los DTO (class-validator).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id       String  @id @default(uuid())
+  nombre   String
+  email    String  @unique
+  password String
+  rol      String  @default("Operador") // Administrador | Operador | Mecánico
+  activo   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("usuarios")
+}
+
+model Vehiculo {
+  id          String @id @default(uuid())
+  placa       String @unique
+  tipo        String // Tracto | Carreta
+  marca       String
+  modelo      String
+  anio        Int
+  kilometraje Int    @default(0)
+  estado      String @default("Operativo") // Operativo | En taller | Inactivo
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehiculos")
+}
+
+model Conductor {
+  id         String                @id @default(uuid())
+  nombre     String
+  licencia   String
+  categoria  String
+  telefono   String
+  documentos DocumentoConductor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("conductores")
+}
+
+model DocumentoConductor {
+  id          String    @id @default(uuid())
+  tipo        String
+  numero      String
+  vencimiento DateTime  @db.Date
+  conductor   Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
+  conductorId String
+
+  @@map("documentos_conductor")
+}
+
+model OrdenTrabajo {
+  id          String   @id @default(uuid())
+  fecha       DateTime @db.Date
+  placa       String
+  tipo        String // Preventivo | Correctivo | Predictivo
+  descripcion String
+  responsable String
+  conductor   String
+  costo       Float    @default(0)
+  estado      String   @default("Abierta") // Abierta | En proceso | Cerrada
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ordenes_trabajo")
+}
+
+model Repuesto {
+  id        String   @id @default(uuid())
+  nombre    String
+  categoria String
+  calidad   String // Original | Alternativo | Remanufacturado
+  cantidad  Int      @default(1)
+  garantia  String
+  proveedor String
+  costo     Float    @default(0)
+  fecha     DateTime @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("repuestos")
+}
+
+model Neumatico {
+  id            String @id @default(uuid())
+  placa         String
+  posicion      String
+  marca         String
+  kmInstalacion Int    @default(0)
+  kmActual      Int    @default(0)
+  costo         Float  @default(0)
+  tienda        String
+  estado        String @default("Nuevo") // Nuevo | En uso | Para rotar | Reencauche | Descartado
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("neumaticos")
+}
+
+model Viaje {
+  id            String   @id @default(uuid())
+  placaTracto   String
+  carreta       String
+  conductor     String
+  cliente       String
+  operacion     String // IMPO | EXPO
+  contenedor    String
+  tamanio       String
+  tipoCarga     String
+  horaCita      String
+  origen        String
+  destino       String
+  devolucion    String
+  fechaLimite   DateTime @db.Date
+  estado        String   @default("Programado") // Programado | En curso | Culminado | Devuelto
+  nOrden        String   @default("")
+  greRemitente  String   @default("")
+  greTransporte String   @default("")
+  factura       String   @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("viajes")
+}
+
+model Factura {
+  id          String   @id @default(uuid())
+  serie       String
+  tipo        String // Factura | Boleta | N. Crédito
+  cliente     String
+  ruc         String   @default("-")
+  fecha       DateTime @db.Date
+  viaje       String   @default("-")
+  monto       Float    @default(0)
+  igv         Float    @default(0)
+  estadoSunat String   @default("Emitida") // Emitida | Aceptada | Pagada | Anulada
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("facturas")
+}
+
+model Empleado {
+  id         String @id @default(uuid())
+  nombre     String
+  cargo      String
+  tipo       String // Chofer | Administrativo
+  sueldoBase Float  @default(0)
+  bonos      Float  @default(0)
+  descuentos Float  @default(0)
+  periodo    String
+  estadoPago String @default("Pendiente") // Pendiente | Pagado
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("empleados")
+}
