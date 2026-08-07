@@ -15,6 +15,7 @@ import { NeumaticosModule } from './neumaticos/neumaticos.module';
 import { ViajesModule } from './viajes/viajes.module';
 import { FacturasModule } from './facturas/facturas.module';
 import { EmpleadosModule } from './empleados/empleados.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { EmpleadosModule } from './empleados/empleados.module';
     ViajesModule,
     FacturasModule,
     EmpleadosModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [
