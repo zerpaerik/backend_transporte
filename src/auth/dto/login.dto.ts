@@ -7,4 +7,8 @@ export class LoginDto {
   @IsString()
   @IsNotEmpty({ message: 'La contraseña es obligatoria' })
   password: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Debes seleccionar una sede' })
+  sedeId: string;
 }

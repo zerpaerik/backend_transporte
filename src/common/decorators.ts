@@ -12,6 +12,9 @@ export interface JwtUser {
   email: string;
   nombre: string;
   rol: Rol;
+  sedeId: string;
+  sedeCodigo: string;
+  sedeNombre: string;
 }
 
 export const CurrentUser = createParamDecorator(

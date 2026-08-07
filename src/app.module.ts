@@ -16,6 +16,7 @@ import { ViajesModule } from './viajes/viajes.module';
 import { FacturasModule } from './facturas/facturas.module';
 import { EmpleadosModule } from './empleados/empleados.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SedesModule } from './sedes/sedes.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     FacturasModule,
     EmpleadosModule,
     DashboardModule,
+    SedesModule,
   ],
   controllers: [AppController],
   providers: [

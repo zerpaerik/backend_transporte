@@ -3,6 +3,7 @@ import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
 import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
+import { CurrentUser, JwtUser } from '../common/decorators';
 
 class DocumentoDto {
   @IsString() @IsNotEmpty() tipo: string;
@@ -26,21 +27,21 @@ function mapDocs(docs?: DocumentoDto[]) {
 @Injectable()
 class ConductoresService {
   constructor(private prisma: PrismaService) {}
-  findAll() { return this.prisma.conductor.findMany({ orderBy: { createdAt: 'desc' }, include: { documentos: true } }); }
-  async findOne(id: string) {
-    const c = await this.prisma.conductor.findUnique({ where: { id }, include: { documentos: true } });
+  findAll(sedeId: string) { return this.prisma.conductor.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: { documentos: true } }); }
+  async findOne(sedeId: string, id: string) {
+    const c = await this.prisma.conductor.findFirst({ where: { id, sedeId }, include: { documentos: true } });
     if (!c) throw new NotFoundException('Conductor no encontrado');
     return c;
   }
-  create(dto: CreateConductorDto) {
+  create(sedeId: string, dto: CreateConductorDto) {
     const { documentos, ...rest } = dto;
     return this.prisma.conductor.create({
-      data: { ...rest, categoria: rest.categoria ?? '', telefono: rest.telefono ?? '', documentos: { create: mapDocs(documentos) } },
+      data: { ...rest, sedeId, categoria: rest.categoria ?? '', telefono: rest.telefono ?? '', documentos: { create: mapDocs(documentos) } },
       include: { documentos: true },
     });
   }
-  async update(id: string, dto: UpdateConductorDto) {
-    await this.findOne(id);
+  async update(sedeId: string, id: string, dto: UpdateConductorDto) {
+    await this.findOne(sedeId, id);
     const { documentos, ...rest } = dto;
     if (documentos) {
       await this.prisma.documentoConductor.deleteMany({ where: { conductorId: id } });
@@ -48,17 +49,17 @@ class ConductoresService {
     }
     return this.prisma.conductor.update({ where: { id }, data: rest, include: { documentos: true } });
   }
-  async remove(id: string) { await this.findOne(id); return this.prisma.conductor.delete({ where: { id } }); }
+  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.conductor.delete({ where: { id } }); }
 }
 
 @Controller('conductores')
 class ConductoresController {
   constructor(private readonly service: ConductoresService) {}
-  @Get() findAll() { return this.service.findAll(); }
-  @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
-  @Post() create(@Body() dto: CreateConductorDto) { return this.service.create(dto); }
-  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateConductorDto) { return this.service.update(id, dto); }
-  @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
+  @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateConductorDto) { return this.service.create(u.sedeId, dto); }
+  @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateConductorDto) { return this.service.update(u.sedeId, id, dto); }
+  @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
 @Module({ controllers: [ConductoresController], providers: [ConductoresService] })

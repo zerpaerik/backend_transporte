@@ -2,7 +2,7 @@ import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, De
 import { PartialType } from '@nestjs/mapped-types';
 import { IsIn, IsInt, IsOptional, IsString, Min, IsNotEmpty } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
-import { Roles } from '../common/decorators';
+import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 
 class CreateVehiculoDto {
   @IsString() @IsNotEmpty() placa: string;
@@ -18,25 +18,25 @@ class UpdateVehiculoDto extends PartialType(CreateVehiculoDto) {}
 @Injectable()
 class VehiculosService {
   constructor(private prisma: PrismaService) {}
-  findAll() { return this.prisma.vehiculo.findMany({ orderBy: { createdAt: 'desc' } }); }
-  async findOne(id: string) {
-    const v = await this.prisma.vehiculo.findUnique({ where: { id } });
+  findAll(sedeId: string) { return this.prisma.vehiculo.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' } }); }
+  async findOne(sedeId: string, id: string) {
+    const v = await this.prisma.vehiculo.findFirst({ where: { id, sedeId } });
     if (!v) throw new NotFoundException('Vehículo no encontrado');
     return v;
   }
-  create(dto: CreateVehiculoDto) { return this.prisma.vehiculo.create({ data: dto as any }); }
-  async update(id: string, dto: UpdateVehiculoDto) { await this.findOne(id); return this.prisma.vehiculo.update({ where: { id }, data: dto }); }
-  async remove(id: string) { await this.findOne(id); return this.prisma.vehiculo.delete({ where: { id } }); }
+  create(sedeId: string, dto: CreateVehiculoDto) { return this.prisma.vehiculo.create({ data: { ...dto, sedeId } as any }); }
+  async update(sedeId: string, id: string, dto: UpdateVehiculoDto) { await this.findOne(sedeId, id); return this.prisma.vehiculo.update({ where: { id }, data: dto }); }
+  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.vehiculo.delete({ where: { id } }); }
 }
 
 @Controller('vehiculos')
 class VehiculosController {
   constructor(private readonly service: VehiculosService) {}
-  @Get() findAll() { return this.service.findAll(); }
-  @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
-  @Post() create(@Body() dto: CreateVehiculoDto) { return this.service.create(dto); }
-  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateVehiculoDto) { return this.service.update(id, dto); }
-  @Roles('Administrador') @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
+  @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateVehiculoDto) { return this.service.create(u.sedeId, dto); }
+  @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateVehiculoDto) { return this.service.update(u.sedeId, id, dto); }
+  @Roles('Administrador') @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
 @Module({ controllers: [VehiculosController], providers: [VehiculosService] })

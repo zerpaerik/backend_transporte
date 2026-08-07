@@ -2,6 +2,7 @@ import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, De
 import { PartialType } from '@nestjs/mapped-types';
 import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsNotEmpty, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
+import { CurrentUser, JwtUser } from '../common/decorators';
 
 class CreateNeumaticoDto {
   @IsString() @IsNotEmpty() placa: string;
@@ -18,25 +19,25 @@ class UpdateNeumaticoDto extends PartialType(CreateNeumaticoDto) {}
 @Injectable()
 class NeumaticosService {
   constructor(private prisma: PrismaService) {}
-  findAll() { return this.prisma.neumatico.findMany({ orderBy: { createdAt: 'desc' } }); }
-  async findOne(id: string) {
-    const n = await this.prisma.neumatico.findUnique({ where: { id } });
+  findAll(sedeId: string) { return this.prisma.neumatico.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' } }); }
+  async findOne(sedeId: string, id: string) {
+    const n = await this.prisma.neumatico.findFirst({ where: { id, sedeId } });
     if (!n) throw new NotFoundException('Neumático no encontrado');
     return n;
   }
-  create(dto: CreateNeumaticoDto) { return this.prisma.neumatico.create({ data: dto as any }); }
-  async update(id: string, dto: UpdateNeumaticoDto) { await this.findOne(id); return this.prisma.neumatico.update({ where: { id }, data: dto }); }
-  async remove(id: string) { await this.findOne(id); return this.prisma.neumatico.delete({ where: { id } }); }
+  create(sedeId: string, dto: CreateNeumaticoDto) { return this.prisma.neumatico.create({ data: { ...dto, sedeId } as any }); }
+  async update(sedeId: string, id: string, dto: UpdateNeumaticoDto) { await this.findOne(sedeId, id); return this.prisma.neumatico.update({ where: { id }, data: dto }); }
+  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.neumatico.delete({ where: { id } }); }
 }
 
 @Controller('neumaticos')
 class NeumaticosController {
   constructor(private readonly service: NeumaticosService) {}
-  @Get() findAll() { return this.service.findAll(); }
-  @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
-  @Post() create(@Body() dto: CreateNeumaticoDto) { return this.service.create(dto); }
-  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateNeumaticoDto) { return this.service.update(id, dto); }
-  @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
+  @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateNeumaticoDto) { return this.service.create(u.sedeId, dto); }
+  @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateNeumaticoDto) { return this.service.update(u.sedeId, id, dto); }
+  @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
 @Module({ controllers: [NeumaticosController], providers: [NeumaticosService] })

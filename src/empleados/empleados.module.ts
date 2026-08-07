@@ -2,7 +2,7 @@ import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, De
 import { PartialType } from '@nestjs/mapped-types';
 import { IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
-import { Roles } from '../common/decorators';
+import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 
 class CreateEmpleadoDto {
   @IsString() @IsNotEmpty() nombre: string;
@@ -19,15 +19,15 @@ class UpdateEmpleadoDto extends PartialType(CreateEmpleadoDto) {}
 @Injectable()
 class EmpleadosService {
   constructor(private prisma: PrismaService) {}
-  findAll() { return this.prisma.empleado.findMany({ orderBy: { createdAt: 'desc' } }); }
-  async findOne(id: string) {
-    const e = await this.prisma.empleado.findUnique({ where: { id } });
+  findAll(sedeId: string) { return this.prisma.empleado.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' } }); }
+  async findOne(sedeId: string, id: string) {
+    const e = await this.prisma.empleado.findFirst({ where: { id, sedeId } });
     if (!e) throw new NotFoundException('Empleado no encontrado');
     return e;
   }
-  create(dto: CreateEmpleadoDto) { return this.prisma.empleado.create({ data: dto as any }); }
-  async update(id: string, dto: UpdateEmpleadoDto) { await this.findOne(id); return this.prisma.empleado.update({ where: { id }, data: dto }); }
-  async remove(id: string) { await this.findOne(id); return this.prisma.empleado.delete({ where: { id } }); }
+  create(sedeId: string, dto: CreateEmpleadoDto) { return this.prisma.empleado.create({ data: { ...dto, sedeId } as any }); }
+  async update(sedeId: string, id: string, dto: UpdateEmpleadoDto) { await this.findOne(sedeId, id); return this.prisma.empleado.update({ where: { id }, data: dto }); }
+  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.empleado.delete({ where: { id } }); }
 }
 
 // Módulo de planilla: solo Administrador
@@ -35,11 +35,11 @@ class EmpleadosService {
 @Controller('empleados')
 class EmpleadosController {
   constructor(private readonly service: EmpleadosService) {}
-  @Get() findAll() { return this.service.findAll(); }
-  @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
-  @Post() create(@Body() dto: CreateEmpleadoDto) { return this.service.create(dto); }
-  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateEmpleadoDto) { return this.service.update(id, dto); }
-  @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
+  @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateEmpleadoDto) { return this.service.create(u.sedeId, dto); }
+  @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateEmpleadoDto) { return this.service.update(u.sedeId, id, dto); }
+  @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
 @Module({ controllers: [EmpleadosController], providers: [EmpleadosService] })

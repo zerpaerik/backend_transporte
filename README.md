@@ -53,8 +53,10 @@ Todos bajo el prefijo `/api`. Requieren `Authorization: Bearer <token>` salvo lo
 
 | Método | Ruta | Descripción | Roles |
 | --- | --- | --- | --- |
-| POST | `/auth/login` | Login → `{ access_token, user }` | público |
-| GET | `/auth/me` | Usuario actual | autenticado |
+| GET | `/sedes` | Empresas/sedes activas (para el login) | público |
+| POST | `/auth/login` | Login `{ email, password, sedeId }` → `{ access_token, user }` | público |
+| GET | `/auth/me` | Usuario actual (incluye sede) | autenticado |
+| GET | `/dashboard/resumen` | KPIs, gráficos y alertas (de la sede) | autenticado |
 | GET/POST/PATCH/DELETE | `/vehiculos` | Flota (tractos y carretas) | todos (DELETE: Admin) |
 | GET/POST/PATCH/DELETE | `/conductores` | Conductores + documentos | Admin, Operador |
 | GET/POST/PATCH/DELETE | `/ordenes` | Mantenimiento (órdenes) | Admin, Mecánico |
@@ -77,6 +79,14 @@ TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
 
 curl http://localhost:3001/api/vehiculos -H "Authorization: Bearer $TOKEN"
 ```
+
+## Multi-sede (multi-empresa)
+
+El sistema maneja **dos sedes**: **MGR** (Transportes y Servicios MGR S.A.C., RUC 20608118153) y
+**MJG** (MJG Transportes S.A.C., RUC 20614975831). En el login se elige la sede; el JWT lleva el
+`sedeId` y **todos los registros operativos se filtran por sede** (aislamiento de datos). Los
+**usuarios son globales** (el mismo admin puede entrar a cualquier sede — pensado para pruebas).
+Para agregar/editar sedes, ver la tabla `sedes` (seed en `prisma/seed.ts`).
 
 ## Formato de datos
 

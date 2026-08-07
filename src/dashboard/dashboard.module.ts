@@ -1,5 +1,6 @@
 import { Module, Injectable, Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CurrentUser, JwtUser } from '../common/decorators';
 
 // Fecha de referencia del demo (coincide con la del frontend) para que las
 // alertas de vencimiento/devolución sean estables y consistentes en ambos lados.
@@ -21,14 +22,14 @@ function countBy<T>(items: T[], key: (t: T) => string, labels: string[]) {
 class DashboardService {
   constructor(private prisma: PrismaService) {}
 
-  async resumen() {
+  async resumen(sedeId: string) {
     const [vehiculos, viajes, facturas, ordenes, empleados, conductores] = await Promise.all([
-      this.prisma.vehiculo.findMany(),
-      this.prisma.viaje.findMany(),
-      this.prisma.factura.findMany(),
-      this.prisma.ordenTrabajo.findMany(),
-      this.prisma.empleado.findMany(),
-      this.prisma.conductor.findMany({ include: { documentos: true } }),
+      this.prisma.vehiculo.findMany({ where: { sedeId } }),
+      this.prisma.viaje.findMany({ where: { sedeId } }),
+      this.prisma.factura.findMany({ where: { sedeId } }),
+      this.prisma.ordenTrabajo.findMany({ where: { sedeId } }),
+      this.prisma.empleado.findMany({ where: { sedeId } }),
+      this.prisma.conductor.findMany({ where: { sedeId }, include: { documentos: true } }),
     ]);
 
     const operativos = vehiculos.filter((v) => v.estado === 'Operativo').length;
@@ -94,7 +95,7 @@ function countByCosto(ordenes: { tipo: string; costo: number }[]) {
 @Controller('dashboard')
 class DashboardController {
   constructor(private readonly service: DashboardService) {}
-  @Get('resumen') resumen() { return this.service.resumen(); }
+  @Get('resumen') resumen(@CurrentUser() u: JwtUser) { return this.service.resumen(u.sedeId); }
 }
 
 @Module({ controllers: [DashboardController], providers: [DashboardService] })

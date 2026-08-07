@@ -12,6 +12,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Sede {
+  id        String   @id @default(uuid())
+  codigo    String   @unique // "mgr" | "mjg"
+  nombre    String
+  ruc       String
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sedes")
+}
+
 model Usuario {
   id       String  @id @default(uuid())
   nombre   String
@@ -39,6 +51,9 @@ model Vehiculo {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("vehiculos")
 }
 
@@ -53,6 +68,9 @@ model Conductor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("conductores")
 }
 
@@ -81,6 +99,9 @@ model OrdenTrabajo {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("ordenes_trabajo")
 }
 
@@ -98,6 +119,9 @@ model Repuesto {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("repuestos")
 }
 
@@ -115,6 +139,9 @@ model Neumatico {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("neumaticos")
 }
 
@@ -142,6 +169,9 @@ model Viaje {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("viajes")
 }
 
@@ -160,6 +190,9 @@ model Factura {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("facturas")
 }
 
@@ -177,5 +210,8 @@ model Empleado {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sedeId String
+
+  @@index([sedeId])
   @@map("empleados")
 }

@@ -2,6 +2,7 @@ import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, De
 import { PartialType } from '@nestjs/mapped-types';
 import { IsDateString, IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
+import { CurrentUser, JwtUser } from '../common/decorators';
 
 class CreateFacturaDto {
   @IsString() @IsNotEmpty() serie: string;
@@ -32,25 +33,25 @@ function toData(dto: Partial<CreateFacturaDto>) {
 @Injectable()
 class FacturasService {
   constructor(private prisma: PrismaService) {}
-  findAll() { return this.prisma.factura.findMany({ orderBy: { fecha: 'desc' } }); }
-  async findOne(id: string) {
-    const f = await this.prisma.factura.findUnique({ where: { id } });
+  findAll(sedeId: string) { return this.prisma.factura.findMany({ where: { sedeId }, orderBy: { fecha: 'desc' } }); }
+  async findOne(sedeId: string, id: string) {
+    const f = await this.prisma.factura.findFirst({ where: { id, sedeId } });
     if (!f) throw new NotFoundException('Factura no encontrada');
     return f;
   }
-  create(dto: CreateFacturaDto) { return this.prisma.factura.create({ data: toData(dto) }); }
-  async update(id: string, dto: UpdateFacturaDto) { await this.findOne(id); return this.prisma.factura.update({ where: { id }, data: toData(dto) }); }
-  async remove(id: string) { await this.findOne(id); return this.prisma.factura.delete({ where: { id } }); }
+  create(sedeId: string, dto: CreateFacturaDto) { return this.prisma.factura.create({ data: { ...toData(dto), sedeId } }); }
+  async update(sedeId: string, id: string, dto: UpdateFacturaDto) { await this.findOne(sedeId, id); return this.prisma.factura.update({ where: { id }, data: toData(dto) }); }
+  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.factura.delete({ where: { id } }); }
 }
 
 @Controller('facturas')
 class FacturasController {
   constructor(private readonly service: FacturasService) {}
-  @Get() findAll() { return this.service.findAll(); }
-  @Get(':id') findOne(@Param('id') id: string) { return this.service.findOne(id); }
-  @Post() create(@Body() dto: CreateFacturaDto) { return this.service.create(dto); }
-  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateFacturaDto) { return this.service.update(id, dto); }
-  @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
+  @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateFacturaDto) { return this.service.create(u.sedeId, dto); }
+  @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateFacturaDto) { return this.service.update(u.sedeId, id, dto); }
+  @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
 @Module({ controllers: [FacturasController], providers: [FacturasService] })
