@@ -48,6 +48,8 @@ model Vehiculo {
   kilometraje Int    @default(0)
   estado      String @default("Operativo") // Operativo | En taller | Inactivo
 
+  documentos DocumentoVehiculo[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -75,14 +77,44 @@ model Conductor {
 }
 
 model DocumentoConductor {
-  id          String    @id @default(uuid())
-  tipo        String
-  numero      String
-  vencimiento DateTime  @db.Date
-  conductor   Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
-  conductorId String
+  id            String    @id @default(uuid())
+  tipo          String
+  numero        String
+  vencimiento   DateTime  @db.Date
+  archivo       Bytes?
+  archivoNombre String?
+  archivoMime   String?
+  conductor     Conductor @relation(fields: [conductorId], references: [id], onDelete: Cascade)
+  conductorId   String
 
   @@map("documentos_conductor")
+}
+
+model DocumentoVehiculo {
+  id            String   @id @default(uuid())
+  tipo          String
+  numero        String   @default("")
+  vencimiento   DateTime @db.Date
+  archivo       Bytes?
+  archivoNombre String?
+  archivoMime   String?
+  vehiculo      Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  vehiculoId    String
+
+  @@index([vehiculoId])
+  @@map("documentos_vehiculo")
+}
+
+model TipoOperacion {
+  id        String   @id @default(uuid())
+  nombre    String
+  sedeId    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("tipos_operacion")
 }
 
 model OrdenTrabajo {

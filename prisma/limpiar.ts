@@ -14,8 +14,9 @@ async function main() {
 
   // Orden por dependencias (documentos antes que conductores).
   const borrados = {
-    documentos: (await prisma.documentoConductor.deleteMany()).count,
+    documentosConductor: (await prisma.documentoConductor.deleteMany()).count,
     conductores: (await prisma.conductor.deleteMany()).count,
+    documentosVehiculo: (await prisma.documentoVehiculo.deleteMany()).count,
     vehiculos: (await prisma.vehiculo.deleteMany()).count,
     ordenes: (await prisma.ordenTrabajo.deleteMany()).count,
     repuestos: (await prisma.repuesto.deleteMany()).count,

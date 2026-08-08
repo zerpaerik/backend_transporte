@@ -17,6 +17,7 @@ import { FacturasModule } from './facturas/facturas.module';
 import { EmpleadosModule } from './empleados/empleados.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SedesModule } from './sedes/sedes.module';
+import { TiposOperacionModule } from './tipos-operacion/tipos-operacion.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SedesModule } from './sedes/sedes.module';
     EmpleadosModule,
     DashboardModule,
     SedesModule,
+    TiposOperacionModule,
   ],
   controllers: [AppController],
   providers: [

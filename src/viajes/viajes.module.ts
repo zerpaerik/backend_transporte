@@ -9,7 +9,7 @@ class CreateViajeDto {
   @IsString() @IsOptional() carreta?: string;
   @IsString() @IsOptional() conductor?: string;
   @IsString() @IsNotEmpty() cliente: string;
-  @IsIn(['IMPO', 'EXPO']) operacion: string;
+  @IsString() @IsNotEmpty() operacion: string;
   @IsString() @IsNotEmpty() contenedor: string;
   @IsString() @IsOptional() tamanio?: string;
   @IsString() @IsOptional() tipoCarga?: string;

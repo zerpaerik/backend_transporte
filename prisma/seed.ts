@@ -38,6 +38,12 @@ const CARGOADM = ['Coordinadora de operaciones', 'Asistente administrativo', 'Co
 const genPlaca = (r: () => number) => { const L = 'ABCDEFGHJKLMNPRSTUVWXYZ'.split(''); return `${pick(r, L)}${pick(r, L)}${pick(r, L)}-${int(r, 100, 999)}`; };
 
 async function seedSede(sedeId: string, salt: number) {
+  // Tipos de operación (catálogo administrable): precargados IMPO y EXPO.
+  await prisma.tipoOperacion.createMany({ data: [
+    { sedeId, nombre: 'IMPO' },
+    { sedeId, nombre: 'EXPO' },
+  ] });
+
   const tractos: string[] = [];
   const carretas: string[] = [];
   const rv = rng(101 + salt);
@@ -151,7 +157,9 @@ async function main() {
 
   await prisma.documentoConductor.deleteMany();
   await prisma.conductor.deleteMany();
+  await prisma.documentoVehiculo.deleteMany();
   await prisma.vehiculo.deleteMany();
+  await prisma.tipoOperacion.deleteMany();
   await prisma.ordenTrabajo.deleteMany();
   await prisma.repuesto.deleteMany();
   await prisma.neumatico.deleteMany();
