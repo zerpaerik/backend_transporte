@@ -14,9 +14,10 @@ datasource db {
 
 model Sede {
   id        String   @id @default(uuid())
-  codigo    String   @unique // "mgr" | "mjg"
+  codigo    String   @unique // "mgr" | "mjg" | "mgrsi"
   nombre    String
   ruc       String
+  orden     Int      @default(0)
   activa    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

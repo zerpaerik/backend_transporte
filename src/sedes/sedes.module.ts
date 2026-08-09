@@ -8,7 +8,7 @@ class SedesService {
   findActivas() {
     return this.prisma.sede.findMany({
       where: { activa: true },
-      orderBy: { nombre: 'asc' },
+      orderBy: [{ orden: 'asc' }, { nombre: 'asc' }],
       select: { id: true, codigo: true, nombre: true, ruc: true },
     });
   }

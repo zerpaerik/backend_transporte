@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "ts-node prisma/seed.ts",
-    "limpiar": "ts-node prisma/limpiar.ts"
+    "limpiar": "ts-node prisma/limpiar.ts",
+    "sedes": "ts-node prisma/sedes.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

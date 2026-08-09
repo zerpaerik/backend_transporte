@@ -169,9 +169,10 @@ async function main() {
   await prisma.usuario.deleteMany();
   await prisma.sede.deleteMany();
 
-  // Sedes
-  const mgr = await prisma.sede.create({ data: { codigo: 'mgr', nombre: 'Transportes y Servicios MGR S.A.C.', ruc: '20608118153' } });
-  const mjg = await prisma.sede.create({ data: { codigo: 'mjg', nombre: 'MJG Transportes S.A.C.', ruc: '20614975831' } });
+  // Sedes (orden en el login: MGR, MJG en el medio, MGR Servicios Integrados)
+  const mgr = await prisma.sede.create({ data: { codigo: 'mgr', nombre: 'Transportes y Servicios MGR S.A.C.', ruc: '20608118153', orden: 1 } });
+  const mjg = await prisma.sede.create({ data: { codigo: 'mjg', nombre: 'MJG Transportes S.A.C.', ruc: '20614975831', orden: 2 } });
+  const mgrsi = await prisma.sede.create({ data: { codigo: 'mgrsi', nombre: 'MGR Servicios Integrados S.A.C.', ruc: '20616110340', orden: 3 } });
 
   // Usuarios globales (pueden ingresar a cualquier sede)
   const users = [
@@ -186,6 +187,7 @@ async function main() {
 
   await seedSede(mgr.id, 0);
   await seedSede(mjg.id, 500);
+  await seedSede(mgrsi.id, 900);
 
   const counts = {
     sedes: await prisma.sede.count(), usuarios: await prisma.usuario.count(),
