@@ -70,7 +70,8 @@ async function seedSede(sedeId: string, salt: number) {
     { sedeId, nombre: 'EXPO' },
     { sedeId, nombre: 'Carga suelta' },
   ] });
-  await prisma.cliente.createMany({ data: CLIENTES.map((c, i) => ({ sedeId, nombre: c, ruc: '20' + String(600000000 + (i + salt) * 137).slice(0, 9) })) });
+  const rucDe: Record<string, string> = Object.fromEntries(CLIENTES.map((c, i) => [c, '20' + String(600000000 + (i + salt) * 137).slice(0, 9)]));
+  await prisma.cliente.createMany({ data: CLIENTES.map((c) => ({ sedeId, nombre: c, ruc: rucDe[c] })) });
   const puertos = Array.from(new Set([...PUERTOS, ...DEVOL]));
   await prisma.puerto.createMany({ data: puertos.map((n) => ({ sedeId, nombre: n })) });
   await prisma.comision.createMany({ data: TARIFAS.map(([destino, gral, imo, reefer]) => ({ sedeId, destino, gral, imo, reefer })) });
@@ -149,8 +150,9 @@ async function seedSede(sedeId: string, salt: number) {
     const destino = pick(rt, DISTRITOS);
     const tipoCarga = pick(rt, ['GRAL', 'IMO', 'REEFER']);
     const comisionChofer = tarifaMonto(destino, tipoCarga);
+    const cliente = pick(rt, CLIENTES);
     await prisma.viaje.create({ data: {
-      sedeId, codigo: 'OP-' + pad(i + 1, 4), placaTracto: pick(rt, tractos), carreta: pick(rt, carretas), conductor: pick(rt, NOMBRES), cliente: pick(rt, CLIENTES),
+      sedeId, codigo: 'OP-' + pad(i + 1, 4), placaTracto: pick(rt, tractos), carreta: pick(rt, carretas), conductor: pick(rt, NOMBRES), cliente, clienteRuc: rucDe[cliente] ?? '',
       operacion: rt() > 0.5 ? 'IMPO' : 'EXPO', contenedor: `${pick(rt, contPfx)}${int(rt, 1000000, 9999999)}`,
       tamanio: pick(rt, ["20'", "40'", "40' HC"]), tipoCarga,
       horaCita: `${pad(int(rt, 5, 18), 2)}:00`, origen: pick(rt, PUERTOS), destino, devolucion: pick(rt, DEVOL),
