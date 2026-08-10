@@ -18,6 +18,9 @@ import { EmpleadosModule } from './empleados/empleados.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SedesModule } from './sedes/sedes.module';
 import { TiposOperacionModule } from './tipos-operacion/tipos-operacion.module';
+import { ClientesModule } from './clientes/clientes.module';
+import { PuertosModule } from './puertos/puertos.module';
+import { ComisionesModule } from './comisiones/comisiones.module';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { TiposOperacionModule } from './tipos-operacion/tipos-operacion.module';
     DashboardModule,
     SedesModule,
     TiposOperacionModule,
+    ClientesModule,
+    PuertosModule,
+    ComisionesModule,
   ],
   controllers: [AppController],
   providers: [

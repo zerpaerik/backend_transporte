@@ -1,0 +1,9 @@
+-- AlterTable
+ALTER TABLE "viajes" ALTER COLUMN "carreta" SET DEFAULT '',
+ALTER COLUMN "conductor" SET DEFAULT '',
+ALTER COLUMN "tamanio" SET DEFAULT '',
+ALTER COLUMN "tipoCarga" SET DEFAULT '',
+ALTER COLUMN "horaCita" SET DEFAULT '',
+ALTER COLUMN "origen" SET DEFAULT '',
+ALTER COLUMN "destino" SET DEFAULT '',
+ALTER COLUMN "devolucion" SET DEFAULT '';

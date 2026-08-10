@@ -47,10 +47,10 @@ class DashboardService {
       .sort((a, b) => a.dias - b.dias);
 
     const devoluciones = viajes
-      .filter((v) => v.estado !== 'Culminado' && v.estado !== 'Devuelto')
+      .filter((v) => v.estado !== 'Culminado' && v.estado !== 'Devuelto' && v.fechaLimite)
       .map((v) => ({
         contenedor: v.contenedor, cliente: v.cliente, placaTracto: v.placaTracto,
-        devolucion: v.devolucion, fechaLimite: iso(v.fechaLimite), dias: dias(v.fechaLimite),
+        devolucion: v.devolucion, fechaLimite: iso(v.fechaLimite as Date), dias: dias(v.fechaLimite as Date),
       }))
       .sort((a, b) => a.dias - b.dias);
 

@@ -118,6 +118,46 @@ model TipoOperacion {
   @@map("tipos_operacion")
 }
 
+model Cliente {
+  id        String   @id @default(uuid())
+  nombre    String
+  ruc       String   @default("")
+  sedeId    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("clientes")
+}
+
+model Puerto {
+  id        String   @id @default(uuid())
+  nombre    String
+  sedeId    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("puertos")
+}
+
+model Comision {
+  id        String   @id @default(uuid())
+  destino   String // distrito
+  gral      Float    @default(0)
+  imo       Float    @default(0)
+  reefer    Float    @default(0)
+  sedeId    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("comisiones")
+}
+
 model OrdenTrabajo {
   id          String   @id @default(uuid())
   fecha       DateTime @db.Date
@@ -181,23 +221,29 @@ model Neumatico {
 model Viaje {
   id            String   @id @default(uuid())
   placaTracto   String
-  carreta       String
-  conductor     String
+  carreta       String    @default("")
+  conductor     String    @default("")
   cliente       String
-  operacion     String // IMPO | EXPO
+  operacion     String // IMPO | EXPO | Carga suelta
   contenedor    String
-  tamanio       String
-  tipoCarga     String
-  horaCita      String
-  origen        String
-  destino       String
-  devolucion    String
-  fechaLimite   DateTime @db.Date
-  estado        String   @default("Programado") // Programado | En curso | Culminado | Devuelto
-  nOrden        String   @default("")
-  greRemitente  String   @default("")
-  greTransporte String   @default("")
-  factura       String   @default("")
+  tamanio       String    @default("")
+  tipoCarga     String    @default("")
+  horaCita      String    @default("")
+  origen        String    @default("")
+  destino       String    @default("")
+  devolucion    String    @default("")
+  ubicacion     String    @default("")
+  fechaLimite   DateTime? @db.Date
+  estado        String    @default("Programado") // Programado | En curso | Culminado | Devuelto
+  codigo        String    @default("")
+  clienteRuc    String    @default("")
+  comisionChofer Float    @default(0)
+  comisionPagada Boolean  @default(false)
+  comisionFechaPago DateTime? @db.Date
+  nOrden        String    @default("")
+  greRemitente  String    @default("")
+  greTransporte String    @default("")
+  factura       String    @default("")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

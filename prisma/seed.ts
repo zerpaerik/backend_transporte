@@ -37,12 +37,43 @@ const MANTDESC = ['Mantenimiento programado: aceite y filtros', 'Cambio de pasti
 const CARGOADM = ['Coordinadora de operaciones', 'Asistente administrativo', 'Contador', 'Jefe de flota', 'Tesorería'];
 const genPlaca = (r: () => number) => { const L = 'ABCDEFGHJKLMNPRSTUVWXYZ'.split(''); return `${pick(r, L)}${pick(r, L)}${pick(r, L)}-${int(r, 100, 999)}`; };
 
+// Tarifario de bonificación al chofer (del Excel BONOS): [distrito, GRAL, IMO, REEFER]
+const TARIFAS: [string, number, number, number][] = [
+  ['CALLAO', 80, 130, 110], ['BELLAVISTA', 80, 130, 110], ['CARMEN DE LA LEGUA', 80, 130, 110], ['LA PERLA', 80, 130, 110],
+  ['SAN MIGUEL', 80, 130, 110], ['VENTANILLA', 80, 140, 110], ['PTE PIEDRA', 90, 150, 120], ['COMAS', 90, 150, 120],
+  ['CERCADO DE LIMA', 90, 150, 120], ['SMP', 90, 150, 120], ['LOS OLIVOS', 90, 150, 120], ['INDEPENDENCIA', 90, 150, 120],
+  ['RIMAC', 90, 150, 120], ['EL AGUSTINO', 90, 150, 120], ['BREÑA', 90, 150, 120], ['LA VICTORIA', 90, 150, 120],
+  ['SJL', 90, 150, 120], ['SAN LUIS', 90, 150, 120], ['SANTA ANITA', 90, 150, 120], ['VITARTE', 90, 160, 120],
+  ['SANTA CLARA', 90, 160, 120], ['HUACHIPA', 100, 160, 130], ['VES', 100, 170, 130], ['LURIGANCHO CARAPONGO', 100, 170, 130],
+  ['CHORRILLOS', 100, 170, 130], ['VMT', 100, 170, 130], ['SJM', 100, 170, 130], ['ANCON', 100, 170, 130],
+  ['CHACLACAYO', 100, 170, 130], ['CARABAYLLO', 100, 170, 130], ['LURIN', 110, 190, 140], ['PUNTA HERMOSA', 110, 190, 140],
+  ['CHOSICA', 110, 190, 140], ['SAN ANTONIO', 110, 190, 140], ['CHILCA', 140, 0, 170], ['CAÑETE', 170, 0, 200],
+  ['CHINCHA', 200, 0, 230], ['PISCO', 240, 0, 270], ['ICA', 270, 0, 300], ['HUAURA', 170, 0, 200],
+  ['BARRANCA SUPE', 180, 0, 210], ['CASMA', 280, 0, 310], ['CHIMBOTE', 330, 0, 0], ['TRUJILLO', 420, 0, 0],
+  ['TACNA', 600, 0, 0], ['CHANCAY', 120, 0, 0],
+];
+const DISTRITOS = ['CALLAO', 'CERCADO DE LIMA', 'LURIN', 'PUNTA HERMOSA', 'CHORRILLOS', 'SJL', 'VENTANILLA', 'CHILCA', 'ICA', 'TRUJILLO'];
+const normD = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').trim().toUpperCase();
+function tarifaMonto(destino: string, tipo: string) {
+  const h = TARIFAS.find((t) => normD(t[0]) === normD(destino));
+  if (!h) return 0;
+  const c = normD(tipo);
+  if (c.startsWith('IMO')) return h[2];
+  if (c.startsWith('REEF')) return h[3];
+  return h[1];
+}
+
 async function seedSede(sedeId: string, salt: number) {
-  // Tipos de operación (catálogo administrable): precargados IMPO y EXPO.
+  // Catálogos administrables por sede
   await prisma.tipoOperacion.createMany({ data: [
     { sedeId, nombre: 'IMPO' },
     { sedeId, nombre: 'EXPO' },
+    { sedeId, nombre: 'Carga suelta' },
   ] });
+  await prisma.cliente.createMany({ data: CLIENTES.map((c, i) => ({ sedeId, nombre: c, ruc: '20' + String(600000000 + (i + salt) * 137).slice(0, 9) })) });
+  const puertos = Array.from(new Set([...PUERTOS, ...DEVOL]));
+  await prisma.puerto.createMany({ data: puertos.map((n) => ({ sedeId, nombre: n })) });
+  await prisma.comision.createMany({ data: TARIFAS.map(([destino, gral, imo, reefer]) => ({ sedeId, destino, gral, imo, reefer })) });
 
   const tractos: string[] = [];
   const carretas: string[] = [];
@@ -115,11 +146,15 @@ async function seedSede(sedeId: string, salt: number) {
   for (let i = 0; i < 35; i++) {
     const estado = pick(rt, ['Programado', 'En curso', 'En curso', 'Culminado', 'Culminado', 'Devuelto']);
     const cerrado = estado === 'Culminado' || estado === 'Devuelto';
+    const destino = pick(rt, DISTRITOS);
+    const tipoCarga = pick(rt, ['GRAL', 'IMO', 'REEFER']);
+    const comisionChofer = tarifaMonto(destino, tipoCarga);
     await prisma.viaje.create({ data: {
-      sedeId, placaTracto: pick(rt, tractos), carreta: pick(rt, carretas), conductor: pick(rt, NOMBRES), cliente: pick(rt, CLIENTES),
+      sedeId, codigo: 'OP-' + pad(i + 1, 4), placaTracto: pick(rt, tractos), carreta: pick(rt, carretas), conductor: pick(rt, NOMBRES), cliente: pick(rt, CLIENTES),
       operacion: rt() > 0.5 ? 'IMPO' : 'EXPO', contenedor: `${pick(rt, contPfx)}${int(rt, 1000000, 9999999)}`,
-      tamanio: pick(rt, ["20'", "40'", "40' HC"]), tipoCarga: pick(rt, ['GRAL', 'IMO', 'REEFER', 'GRAL']),
-      horaCita: `${pad(int(rt, 5, 18), 2)}:00`, origen: pick(rt, PUERTOS), destino: pick(rt, DESTINOS), devolucion: pick(rt, DEVOL),
+      tamanio: pick(rt, ["20'", "40'", "40' HC"]), tipoCarga,
+      horaCita: `${pad(int(rt, 5, 18), 2)}:00`, origen: pick(rt, PUERTOS), destino, devolucion: pick(rt, DEVOL),
+      comisionChofer, comisionPagada: rt() > 0.55,
       fechaLimite: d(pick(rt, offV)), estado, nOrden: `26/030${pad(int(rt, 100, 900))}`,
       greRemitente: cerrado || rt() > 0.4 ? `T001-${int(rt, 26000, 27999)}` : '',
       greTransporte: cerrado || rt() > 0.5 ? `V001-${pad(int(rt, 1000, 1999))}` : '',
@@ -160,6 +195,9 @@ async function main() {
   await prisma.documentoVehiculo.deleteMany();
   await prisma.vehiculo.deleteMany();
   await prisma.tipoOperacion.deleteMany();
+  await prisma.cliente.deleteMany();
+  await prisma.puerto.deleteMany();
+  await prisma.comision.deleteMany();
   await prisma.ordenTrabajo.deleteMany();
   await prisma.repuesto.deleteMany();
   await prisma.neumatico.deleteMany();

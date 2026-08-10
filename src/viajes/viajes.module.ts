@@ -1,8 +1,9 @@
 import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartialType } from '@nestjs/mapped-types';
-import { IsDateString, IsIn, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import { IsDateString, IsOptional, IsString, IsNotEmpty } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, JwtUser } from '../common/decorators';
+import { ComisionesModule, ComisionesService } from '../comisiones/comisiones.module';
 
 class CreateViajeDto {
   @IsString() @IsNotEmpty() placaTracto: string;
@@ -17,8 +18,9 @@ class CreateViajeDto {
   @IsString() @IsOptional() origen?: string;
   @IsString() @IsOptional() destino?: string;
   @IsString() @IsOptional() devolucion?: string;
-  @IsDateString() fechaLimite: string;
-  @IsIn(['Programado', 'En curso', 'Culminado', 'Devuelto']) @IsOptional() estado?: string;
+  @IsString() @IsOptional() ubicacion?: string;
+  @IsDateString() @IsOptional() fechaLimite?: string;
+  @IsString() @IsOptional() estado?: string;
   @IsString() @IsOptional() nOrden?: string;
   @IsString() @IsOptional() greRemitente?: string;
   @IsString() @IsOptional() greTransporte?: string;
@@ -28,19 +30,41 @@ class UpdateViajeDto extends PartialType(CreateViajeDto) {}
 
 function toData(dto: Partial<CreateViajeDto>) {
   const { fechaLimite, ...rest } = dto;
-  return { ...rest, ...(fechaLimite ? { fechaLimite: new Date(fechaLimite) } : {}) };
+  const data: any = { ...rest };
+  if (fechaLimite !== undefined) data.fechaLimite = fechaLimite ? new Date(fechaLimite) : null;
+  return data;
 }
 
 @Injectable()
 class ViajesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private comisiones: ComisionesService) {}
+
   findAll(sedeId: string) { return this.prisma.viaje.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' } }); }
   async findOne(sedeId: string, id: string) {
     const v = await this.prisma.viaje.findFirst({ where: { id, sedeId } });
     if (!v) throw new NotFoundException('Viaje no encontrado');
     return v;
   }
-  create(sedeId: string, dto: CreateViajeDto) { return this.prisma.viaje.create({ data: { ...toData(dto), sedeId } as any }); }
+  async findByCodigo(sedeId: string, codigo: string) {
+    const v = await this.prisma.viaje.findFirst({ where: { sedeId, codigo: codigo.trim().toUpperCase() } });
+    if (!v) throw new NotFoundException('No existe un viaje con ese código');
+    return v;
+  }
+
+  private async nextCodigo(sedeId: string) {
+    const last = await this.prisma.viaje.findFirst({ where: { sedeId, codigo: { startsWith: 'OP-' } }, orderBy: { codigo: 'desc' } });
+    const n = last?.codigo ? (parseInt(last.codigo.replace('OP-', ''), 10) || 0) + 1 : 1;
+    return 'OP-' + String(n).padStart(4, '0');
+  }
+
+  async create(sedeId: string, dto: CreateViajeDto) {
+    const codigo = await this.nextCodigo(sedeId);
+    const cli = await this.prisma.cliente.findFirst({ where: { sedeId, nombre: dto.cliente } });
+    const comisionChofer = await this.comisiones.montoPara(sedeId, dto.destino ?? '', dto.tipoCarga ?? '');
+    return this.prisma.viaje.create({
+      data: { ...toData(dto), sedeId, codigo, clienteRuc: cli?.ruc ?? '', comisionChofer, origen: dto.origen ?? '', destino: dto.destino ?? '', devolucion: dto.devolucion ?? '' },
+    });
+  }
   async update(sedeId: string, id: string, dto: UpdateViajeDto) { await this.findOne(sedeId, id); return this.prisma.viaje.update({ where: { id }, data: toData(dto) }); }
   async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.viaje.delete({ where: { id } }); }
 }
@@ -49,11 +73,12 @@ class ViajesService {
 class ViajesController {
   constructor(private readonly service: ViajesService) {}
   @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get('codigo/:codigo') byCodigo(@CurrentUser() u: JwtUser, @Param('codigo') codigo: string) { return this.service.findByCodigo(u.sedeId, codigo); }
   @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateViajeDto) { return this.service.create(u.sedeId, dto); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateViajeDto) { return this.service.update(u.sedeId, id, dto); }
   @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
-@Module({ controllers: [ViajesController], providers: [ViajesService] })
+@Module({ imports: [ComisionesModule], controllers: [ViajesController], providers: [ViajesService] })
 export class ViajesModule {}
