@@ -122,6 +122,9 @@ model Cliente {
   id        String   @id @default(uuid())
   nombre    String
   ruc       String   @default("")
+  email     String   @default("")
+  telefono  String   @default("")
+  contacto  String   @default("")
   sedeId    String
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())

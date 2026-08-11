@@ -7,6 +7,9 @@ import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 class CreateClienteDto {
   @IsString() @IsNotEmpty() nombre: string;
   @IsString() @IsOptional() ruc?: string;
+  @IsString() @IsOptional() email?: string;
+  @IsString() @IsOptional() telefono?: string;
+  @IsString() @IsOptional() contacto?: string;
 }
 class UpdateClienteDto extends PartialType(CreateClienteDto) {}
 
