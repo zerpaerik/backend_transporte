@@ -51,7 +51,7 @@ export class ComisionesService {
     const viajes = await this.prisma.viaje.findMany({
       where: { sedeId, comisionChofer: { gt: 0 } },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, codigo: true, conductor: true, destino: true, tipoCarga: true, comisionChofer: true, comisionPagada: true, comisionFechaPago: true, createdAt: true },
+      select: { id: true, codigo: true, conductor: true, origen: true, destino: true, tipoCarga: true, comisionChofer: true, comisionPagada: true, comisionFechaPago: true, createdAt: true },
     });
     const map: Record<string, any> = {};
     for (const v of viajes) {

@@ -10,6 +10,7 @@ class CreateClienteDto {
   @IsString() @IsOptional() email?: string;
   @IsString() @IsOptional() telefono?: string;
   @IsString() @IsOptional() contacto?: string;
+  @IsString() @IsOptional() direccion?: string;
 }
 class UpdateClienteDto extends PartialType(CreateClienteDto) {}
 

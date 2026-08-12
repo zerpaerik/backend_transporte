@@ -125,6 +125,7 @@ model Cliente {
   email     String   @default("")
   telefono  String   @default("")
   contacto  String   @default("")
+  direccion String   @default("")
   sedeId    String
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -240,6 +241,7 @@ model Viaje {
   estado        String    @default("Programado") // Programado | En curso | Culminado | Devuelto
   codigo        String    @default("")
   clienteRuc    String    @default("")
+  clienteDireccion String @default("")
   comisionChofer Float    @default(0)
   comisionPagada Boolean  @default(false)
   comisionFechaPago DateTime? @db.Date
@@ -263,6 +265,7 @@ model Factura {
   tipo        String // Factura | Boleta | N. Crédito
   cliente     String
   ruc         String   @default("-")
+  direccion   String   @default("")
   fecha       DateTime @db.Date
   viaje       String   @default("-")
   monto       Float    @default(0)

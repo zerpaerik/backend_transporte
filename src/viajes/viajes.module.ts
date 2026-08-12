@@ -62,7 +62,7 @@ class ViajesService {
     const cli = await this.prisma.cliente.findFirst({ where: { sedeId, nombre: dto.cliente } });
     const comisionChofer = await this.comisiones.montoPara(sedeId, dto.destino ?? '', dto.tipoCarga ?? '');
     return this.prisma.viaje.create({
-      data: { ...toData(dto), sedeId, codigo, clienteRuc: cli?.ruc ?? '', comisionChofer, origen: dto.origen ?? '', destino: dto.destino ?? '', devolucion: dto.devolucion ?? '' },
+      data: { ...toData(dto), sedeId, codigo, clienteRuc: cli?.ruc ?? '', clienteDireccion: cli?.direccion ?? '', comisionChofer, origen: dto.origen ?? '', destino: dto.destino ?? '', devolucion: dto.devolucion ?? '' },
     });
   }
   async update(sedeId: string, id: string, dto: UpdateViajeDto) { await this.findOne(sedeId, id); return this.prisma.viaje.update({ where: { id }, data: toData(dto) }); }

@@ -4,12 +4,11 @@ import { CurrentUser, JwtUser } from '../common/decorators';
 
 // Fecha de referencia del demo (coincide con la del frontend) para que las
 // alertas de vencimiento/devolución sean estables y consistentes en ambos lados.
-const REF = new Date('2026-08-03T12:00:00');
-const dias = (fecha: Date) => Math.round((new Date(fecha).getTime() - REF.getTime()) / 86_400_000);
+const dias = (fecha: Date) => Math.round((new Date(fecha).getTime() - Date.now()) / 86_400_000);
 const estadoDoc = (fecha: Date) => {
   const d = dias(fecha);
   if (d < 0) return 'Vencido';
-  if (d <= 20) return 'Por vencer';
+  if (d <= 30) return 'Por vencer';
   return 'Vigente';
 };
 const iso = (fecha: Date) => new Date(fecha).toISOString().slice(0, 10);

@@ -9,6 +9,7 @@ class CreateFacturaDto {
   @IsIn(['Factura', 'Boleta', 'N. Crédito']) tipo: string;
   @IsString() @IsNotEmpty() cliente: string;
   @IsString() @IsOptional() ruc?: string;
+  @IsString() @IsOptional() direccion?: string;
   @IsDateString() fecha: string;
   @IsString() @IsOptional() viaje?: string;
   @IsNumber() @Min(0) monto: number;
