@@ -1,6 +1,6 @@
 import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartialType } from '@nestjs/mapped-types';
-import { IsDateString, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import { IsDateString, IsOptional, IsString, IsNotEmpty, IsNumber, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, JwtUser } from '../common/decorators';
 import { ComisionesModule, ComisionesService } from '../comisiones/comisiones.module';
@@ -10,6 +10,7 @@ class CreateViajeDto {
   @IsString() @IsOptional() carreta?: string;
   @IsString() @IsOptional() conductor?: string;
   @IsString() @IsNotEmpty() cliente: string;
+  @IsNumber() @Min(0) @IsOptional() tarifa?: number;
   @IsString() @IsNotEmpty() operacion: string;
   @IsString() @IsNotEmpty() contenedor: string;
   @IsString() @IsOptional() tamanio?: string;

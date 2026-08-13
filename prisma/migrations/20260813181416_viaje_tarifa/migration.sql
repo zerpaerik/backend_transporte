@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "viajes" ADD COLUMN     "tarifa" DOUBLE PRECISION NOT NULL DEFAULT 0;

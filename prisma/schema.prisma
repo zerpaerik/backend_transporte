@@ -242,6 +242,7 @@ model Viaje {
   codigo        String    @default("")
   clienteRuc    String    @default("")
   clienteDireccion String @default("")
+  tarifa        Float     @default(0)
   comisionChofer Float    @default(0)
   comisionPagada Boolean  @default(false)
   comisionFechaPago DateTime? @db.Date
