@@ -21,6 +21,7 @@ import { TiposOperacionModule } from './tipos-operacion/tipos-operacion.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { PuertosModule } from './puertos/puertos.module';
 import { ComisionesModule } from './comisiones/comisiones.module';
+import { PlanillasModule } from './planillas/planillas.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ComisionesModule } from './comisiones/comisiones.module';
     ClientesModule,
     PuertosModule,
     ComisionesModule,
+    PlanillasModule,
   ],
   controllers: [AppController],
   providers: [

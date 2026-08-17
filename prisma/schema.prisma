@@ -18,6 +18,7 @@ model Sede {
   nombre    String
   ruc       String
   orden     Int      @default(0)
+  sueldoDia Float    @default(0)
   activa    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -62,12 +63,13 @@ model Vehiculo {
 }
 
 model Conductor {
-  id         String                @id @default(uuid())
-  nombre     String
-  licencia   String
-  categoria  String
-  telefono   String
-  documentos DocumentoConductor[]
+  id              String               @id @default(uuid())
+  nombre          String
+  licencia        String
+  categoria       String
+  telefono         String
+  descuentoMensual Float                @default(0)
+  documentos       DocumentoConductor[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -161,6 +163,42 @@ model Comision {
 
   @@index([sedeId])
   @@map("comisiones")
+}
+
+model Planilla {
+  id                String          @id @default(uuid())
+  sedeId            String
+  conductor         String
+  semanaDesde       DateTime        @db.Date
+  semanaHasta       DateTime        @db.Date
+  sueldoDia         Float           @default(0)
+  descuentoPlanilla Float           @default(0)
+  estado            String          @default("Borrador") // Borrador | Generada | Pagada
+  lineas            PlanillaLinea[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([sedeId])
+  @@map("planillas")
+}
+
+model PlanillaLinea {
+  id         String   @id @default(uuid())
+  planilla   Planilla @relation(fields: [planillaId], references: [id], onDelete: Cascade)
+  planillaId String
+  fecha      DateTime @db.Date
+  cliente    String   @default("")
+  origen     String   @default("")
+  destino    String   @default("")
+  sueldoDia  Float    @default(0)
+  comision   Float    @default(0)
+  viaticos   Float    @default(0)
+  concepto   String   @default("")
+  viajeId    String   @default("")
+  orden      Int      @default(0)
+
+  @@index([planillaId])
+  @@map("planilla_lineas")
 }
 
 model OrdenTrabajo {

@@ -1,7 +1,7 @@
 import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, JwtUser } from '../common/decorators';
 
@@ -20,6 +20,7 @@ class CreateConductorDto {
   @IsString() @IsNotEmpty() licencia: string;
   @IsString() @IsOptional() categoria?: string;
   @IsString() @IsOptional() telefono?: string;
+  @IsNumber() @Min(0) @IsOptional() descuentoMensual?: number;
   @IsArray() @ValidateNested({ each: true }) @Type(() => DocumentoDto) @IsOptional() documentos?: DocumentoDto[];
 }
 class UpdateConductorDto extends PartialType(CreateConductorDto) {}
