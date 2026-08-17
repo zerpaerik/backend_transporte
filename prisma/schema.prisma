@@ -41,7 +41,7 @@ model Usuario {
 
 model Vehiculo {
   id          String @id @default(uuid())
-  placa       String @unique
+  placa       String
   tipo        String // Tracto | Carreta
   marca       String
   modelo      String
@@ -56,6 +56,7 @@ model Vehiculo {
 
   sedeId String
 
+  @@unique([sedeId, placa])
   @@index([sedeId])
   @@map("vehiculos")
 }

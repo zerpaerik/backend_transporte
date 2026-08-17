@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { DateSerializerInterceptor } from './common/date-serializer.interceptor';
+import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -29,6 +30,7 @@ async function bootstrap() {
   );
 
   app.useGlobalInterceptors(new DateSerializerInterceptor());
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   await app.listen(port, '0.0.0.0');
