@@ -12,6 +12,7 @@ class GenerarDto {
 
 class LineaDto {
   @IsString() @IsOptional() id?: string;
+  @IsString() @IsOptional() planillaId?: string;
   @IsDateString() fecha: string;
   @IsString() @IsOptional() cliente?: string;
   @IsString() @IsOptional() origen?: string;
