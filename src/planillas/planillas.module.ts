@@ -81,8 +81,24 @@ class PlanillasService {
 
     const desde = new Date(dto.semanaDesde + 'T00:00:00');
     const hasta = new Date(dto.semanaHasta + 'T23:59:59');
+
+    // Viajes ya liquidados en una planilla pagada: no deben volver a listarse
+    // (incluye los "días trabajados" sin comisión, que no llevan comisionPagada).
+    const pagadas = await this.prisma.planilla.findMany({
+      where: { sedeId, estado: 'Pagada' },
+      select: { lineas: { select: { viajeId: true } } },
+    });
+    const yaLiquidados = pagadas.flatMap((p) => p.lineas.map((l) => l.viajeId)).filter(Boolean);
+
     const viajes = await this.prisma.viaje.findMany({
-      where: { sedeId, conductor: dto.conductor, createdAt: { gte: desde, lte: hasta } },
+      where: {
+        sedeId,
+        conductor: dto.conductor,
+        createdAt: { gte: desde, lte: hasta },
+        // comisión ya saldada (por planilla o por el módulo de comisiones)
+        comisionPagada: false,
+        ...(yaLiquidados.length ? { id: { notIn: yaLiquidados } } : {}),
+      },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -132,8 +148,32 @@ class PlanillasService {
     return this.findOne(sedeId, id);
   }
 
-  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); await this.prisma.planilla.delete({ where: { id } }); return { ok: true }; }
-  async pagar(sedeId: string, id: string) { await this.findOne(sedeId, id); await this.prisma.planilla.update({ where: { id }, data: { estado: 'Pagada' } }); return this.findOne(sedeId, id); }
+  async remove(sedeId: string, id: string) {
+    const p = await this.findOne(sedeId, id);
+    const viajeIds = (p.lineas ?? []).map((l: any) => l.viajeId).filter(Boolean);
+    // Si la planilla estaba pagada, liberar sus viajes para que vuelvan a estar disponibles.
+    await this.prisma.$transaction([
+      ...(p.estado === 'Pagada' && viajeIds.length
+        ? [this.prisma.viaje.updateMany({ where: { sedeId, id: { in: viajeIds } }, data: { comisionPagada: false, comisionFechaPago: null } })]
+        : []),
+      this.prisma.planilla.delete({ where: { id } }),
+    ]);
+    return { ok: true };
+  }
+
+  async pagar(sedeId: string, id: string) {
+    const p = await this.findOne(sedeId, id);
+    // Marcar como saldada la comisión de cada viaje incluido en la planilla,
+    // para que no se vuelva a jalar en una planilla futura ni figure como pendiente en Comisiones.
+    const viajeIds = (p.lineas ?? []).map((l: any) => l.viajeId).filter(Boolean);
+    await this.prisma.$transaction([
+      this.prisma.planilla.update({ where: { id }, data: { estado: 'Pagada' } }),
+      ...(viajeIds.length
+        ? [this.prisma.viaje.updateMany({ where: { sedeId, id: { in: viajeIds }, comisionChofer: { gt: 0 } }, data: { comisionPagada: true, comisionFechaPago: new Date() } })]
+        : []),
+    ]);
+    return this.findOne(sedeId, id);
+  }
 }
 
 @Roles('Administrador')
