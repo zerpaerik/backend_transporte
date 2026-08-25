@@ -1,4 +1,4 @@
-import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
+import { Module, Injectable, NotFoundException, BadRequestException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -81,14 +81,24 @@ class PlanillasService {
 
     const desde = new Date(dto.semanaDesde + 'T00:00:00');
     const hasta = new Date(dto.semanaHasta + 'T23:59:59');
+    const semanaDesde = new Date(dto.semanaDesde);
+    const semanaHasta = new Date(dto.semanaHasta);
 
-    // Viajes ya liquidados en una planilla pagada: no deben volver a listarse
-    // (incluye los "días trabajados" sin comisión, que no llevan comisionPagada).
-    const pagadas = await this.prisma.planilla.findMany({
-      where: { sedeId, estado: 'Pagada' },
+    // Viajes ya consumidos por una planilla finalizada (Generada) o pagada:
+    // no vuelven a listarse (incluye "días trabajados" sin comisión).
+    const finalizadas = await this.prisma.planilla.findMany({
+      where: { sedeId, estado: { in: ['Generada', 'Pagada'] } },
       select: { lineas: { select: { viajeId: true } } },
     });
-    const yaLiquidados = pagadas.flatMap((p) => p.lineas.map((l) => l.viajeId)).filter(Boolean);
+    const consumidos = finalizadas.flatMap((p) => p.lineas.map((l) => l.viajeId)).filter(Boolean);
+
+    // Si ya hay un borrador de este conductor y semana, se le agregan los viajes
+    // nuevos (sin borrar lo ya editado); si no, se crea uno nuevo.
+    const borrador = await this.prisma.planilla.findFirst({
+      where: { sedeId, conductor: dto.conductor, semanaDesde, semanaHasta, estado: 'Borrador' },
+      include: { lineas: { orderBy: { orden: 'asc' } } },
+    });
+    const yaEnBorrador = new Set((borrador?.lineas ?? []).map((l) => l.viajeId).filter(Boolean));
 
     const viajes = await this.prisma.viaje.findMany({
       where: {
@@ -97,16 +107,21 @@ class PlanillasService {
         createdAt: { gte: desde, lte: hasta },
         // comisión ya saldada (por planilla o por el módulo de comisiones)
         comisionPagada: false,
-        ...(yaLiquidados.length ? { id: { notIn: yaLiquidados } } : {}),
+        ...(consumidos.length ? { id: { notIn: consumidos } } : {}),
       },
       orderBy: { createdAt: 'asc' },
     });
+    const nuevos = viajes.filter((v) => !yaEnBorrador.has(v.id));
 
-    const diasVistos = new Set<string>();
-    const lineas = viajes.map((v, i) => {
+    // Días que ya tienen sueldo asignado en el borrador: no se paga dos veces el día.
+    const diasConSueldo = new Set<string>();
+    for (const l of borrador?.lineas ?? []) if (l.sueldoDia > 0) diasConSueldo.add(dayISO(l.fecha));
+    const baseOrden = borrador ? borrador.lineas.reduce((m, l) => Math.max(m, l.orden), -1) + 1 : 0;
+
+    const nuevasLineas = nuevos.map((v, i) => {
       const dia = dayISO(v.createdAt);
-      const primeraDelDia = !diasVistos.has(dia);
-      diasVistos.add(dia);
+      const primeraDelDia = !diasConSueldo.has(dia);
+      diasConSueldo.add(dia);
       return {
         fecha: new Date(dia),
         cliente: v.cliente || '',
@@ -117,14 +132,21 @@ class PlanillasService {
         viaticos: 0,
         concepto: '',
         viajeId: v.id,
-        orden: i,
+        orden: baseOrden + i,
       };
     });
 
+    if (borrador) {
+      if (nuevasLineas.length) {
+        await this.prisma.planillaLinea.createMany({ data: nuevasLineas.map((l) => ({ ...l, planillaId: borrador.id })) });
+      }
+      return this.findOne(sedeId, borrador.id);
+    }
+
     const planilla = await this.prisma.planilla.create({
       data: {
-        sedeId, conductor: dto.conductor, semanaDesde: new Date(dto.semanaDesde), semanaHasta: new Date(dto.semanaHasta),
-        sueldoDia, descuentoPlanilla, estado: 'Borrador', lineas: { create: lineas },
+        sedeId, conductor: dto.conductor, semanaDesde, semanaHasta,
+        sueldoDia, descuentoPlanilla, estado: 'Borrador', lineas: { create: nuevasLineas },
       },
       include: { lineas: { orderBy: { orden: 'asc' } } },
     });
@@ -132,8 +154,11 @@ class PlanillasService {
   }
 
   async update(sedeId: string, id: string, dto: UpdatePlanillaDto) {
-    await this.findOne(sedeId, id);
+    const actual = await this.findOne(sedeId, id);
+    if (actual.estado === 'Pagada') throw new BadRequestException('La planilla ya está pagada; no se puede editar.');
     const { lineas, ...rest } = dto;
+    // Las líneas solo se editan mientras está en Borrador (para finalizar hay que reabrir).
+    if (lineas && actual.estado !== 'Borrador') throw new BadRequestException('Reabre la planilla para editar sus líneas.');
     if (lineas) {
       await this.prisma.planillaLinea.deleteMany({ where: { planillaId: id } });
       await this.prisma.planillaLinea.createMany({
