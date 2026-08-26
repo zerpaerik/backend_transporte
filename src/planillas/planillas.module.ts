@@ -199,6 +199,20 @@ class PlanillasService {
     ]);
     return this.findOne(sedeId, id);
   }
+
+  async reversar(sedeId: string, id: string) {
+    const p = await this.findOne(sedeId, id);
+    if (p.estado !== 'Pagada') throw new BadRequestException('Solo se puede reversar una planilla pagada.');
+    // Vuelve a Borrador y libera los viajes (comisión otra vez pendiente) para poder corregir.
+    const viajeIds = (p.lineas ?? []).map((l: any) => l.viajeId).filter(Boolean);
+    await this.prisma.$transaction([
+      this.prisma.planilla.update({ where: { id }, data: { estado: 'Borrador' } }),
+      ...(viajeIds.length
+        ? [this.prisma.viaje.updateMany({ where: { sedeId, id: { in: viajeIds } }, data: { comisionPagada: false, comisionFechaPago: null } })]
+        : []),
+    ]);
+    return this.findOne(sedeId, id);
+  }
 }
 
 @Roles('Administrador')
@@ -212,6 +226,7 @@ class PlanillasController {
   @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdatePlanillaDto) { return this.service.update(u.sedeId, id, dto); }
   @Post(':id/pagar') pagar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.pagar(u.sedeId, id); }
+  @Post(':id/reversar') reversar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.reversar(u.sedeId, id); }
   @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 

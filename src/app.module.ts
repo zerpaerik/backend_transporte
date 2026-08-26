@@ -22,6 +22,7 @@ import { ClientesModule } from './clientes/clientes.module';
 import { PuertosModule } from './puertos/puertos.module';
 import { ComisionesModule } from './comisiones/comisiones.module';
 import { PlanillasModule } from './planillas/planillas.module';
+import { DevolucionesModule } from './devoluciones/devoluciones.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { PlanillasModule } from './planillas/planillas.module';
     PuertosModule,
     ComisionesModule,
     PlanillasModule,
+    DevolucionesModule,
   ],
   controllers: [AppController],
   providers: [

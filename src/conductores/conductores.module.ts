@@ -3,7 +3,7 @@ import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
 import { IsArray, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
-import { CurrentUser, JwtUser } from '../common/decorators';
+import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 
 class DocumentoDto {
   @IsString() @IsNotEmpty() tipo: string;
@@ -95,8 +95,8 @@ class ConductoresService {
 @Controller('conductores')
 class ConductoresController {
   constructor(private readonly service: ConductoresService) {}
-  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
-  @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
+  @Roles('Administrador', 'Operador', 'Mecánico', 'Conductor') @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Roles('Administrador', 'Operador', 'Mecánico', 'Conductor') @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateConductorDto) { return this.service.create(u.sedeId, dto); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateConductorDto) { return this.service.update(u.sedeId, id, dto); }
   @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
@@ -104,7 +104,7 @@ class ConductoresController {
   @Post(':id/documentos') addDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: DocumentoDto) { return this.service.addDoc(u.sedeId, id, dto); }
   @Patch(':id/documentos/:docId') renovarDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('docId') docId: string, @Body() dto: RenovarDocumentoDto) { return this.service.renovarDoc(u.sedeId, id, docId, dto); }
   @Delete(':id/documentos/:docId') removeDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('docId') docId: string) { return this.service.removeDoc(u.sedeId, id, docId); }
-  @Get(':id/documentos/:docId/archivo') archivo(@CurrentUser() u: JwtUser, @Param('docId') docId: string) { return this.service.archivo(u.sedeId, docId); }
+  @Roles('Administrador', 'Operador', 'Mecánico', 'Conductor') @Get(':id/documentos/:docId/archivo') archivo(@CurrentUser() u: JwtUser, @Param('docId') docId: string) { return this.service.archivo(u.sedeId, docId); }
 }
 
 @Module({ controllers: [ConductoresController], providers: [ConductoresService] })

@@ -11,9 +11,16 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!required || required.length === 0) return true;
-
     const { user } = context.switchToHttp().getRequest();
+
+    // El rol Conductor es de solo lectura y muy acotado: se le niega todo salvo
+    // las rutas que lo habilitan explícitamente (ver/descargar flota y conductores).
+    if (user?.rol === 'Conductor') {
+      if (required && required.includes('Conductor')) return true;
+      throw new ForbiddenException('No tienes permisos para este módulo.');
+    }
+
+    if (!required || required.length === 0) return true;
     if (user && required.includes(user.rol)) return true;
     throw new ForbiddenException('No tienes permisos para este módulo.');
   }

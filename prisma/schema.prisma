@@ -290,6 +290,15 @@ model Viaje {
   greTransporte String    @default("")
   factura       String    @default("")
 
+  // Control de devolución de contenedores (solo aplica a importación)
+  citaFecha         DateTime? @db.Date
+  citaHora          String    @default("")
+  lugarGuardado     String    @default("")
+  estadoDevolucion  String    @default("Pendiente") // Pendiente | En proceso | Devuelto
+  citaArchivo       Bytes?
+  citaArchivoNombre String?
+  citaArchivoMime   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -297,6 +306,18 @@ model Viaje {
 
   @@index([sedeId])
   @@map("viajes")
+}
+
+model LugarGuardado {
+  id        String   @id @default(uuid())
+  nombre    String
+  sedeId    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("lugares_guardado")
 }
 
 model Factura {
