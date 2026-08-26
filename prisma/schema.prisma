@@ -52,6 +52,9 @@ model Vehiculo {
 
   documentos DocumentoVehiculo[]
 
+  foto     Bytes?
+  fotoMime String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -70,6 +73,9 @@ model Conductor {
   telefono         String
   descuentoMensual Float                @default(0)
   documentos       DocumentoConductor[]
+
+  foto     Bytes?
+  fotoMime String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

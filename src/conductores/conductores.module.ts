@@ -41,29 +41,55 @@ function mapDoc(dto: DocumentoDto | RenovarDocumentoDto) {
   return base;
 }
 
+class FotoDto {
+  @IsString() @IsNotEmpty() fotoBase64: string;
+  @IsString() @IsOptional() fotoMime?: string;
+}
+
+// Convierte la foto (binario) a data URI y quita los bytes crudos de la respuesta.
+function mapFoto(row: any) {
+  if (!row) return row;
+  const foto = row.foto ? `data:${row.fotoMime || 'image/jpeg'};base64,${Buffer.from(row.foto).toString('base64')}` : null;
+  const { foto: _f, fotoMime: _m, ...rest } = row;
+  return { ...rest, foto };
+}
+
 @Injectable()
 class ConductoresService {
   constructor(private prisma: PrismaService) {}
 
-  findAll(sedeId: string) {
-    return this.prisma.conductor.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: { documentos: { select: DOC_SELECT } } });
+  async findAll(sedeId: string) {
+    const cs = await this.prisma.conductor.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: { documentos: { select: DOC_SELECT } } });
+    return cs.map(mapFoto);
   }
   async findOne(sedeId: string, id: string) {
     const c = await this.prisma.conductor.findFirst({ where: { id, sedeId }, include: { documentos: { select: DOC_SELECT } } });
     if (!c) throw new NotFoundException('Conductor no encontrado');
-    return c;
+    return mapFoto(c);
   }
-  create(sedeId: string, dto: CreateConductorDto) {
+  async create(sedeId: string, dto: CreateConductorDto) {
     const { documentos, ...rest } = dto;
-    return this.prisma.conductor.create({
+    const c = await this.prisma.conductor.create({
       data: { ...rest, sedeId, categoria: rest.categoria ?? '', telefono: rest.telefono ?? '', documentos: { create: (documentos ?? []).map((d) => ({ tipo: d.tipo, numero: d.numero ?? '', vencimiento: new Date(d.vencimiento), ...(d.archivoBase64 ? { archivo: Buffer.from(d.archivoBase64, 'base64'), archivoNombre: d.archivoNombre ?? 'documento.pdf', archivoMime: d.archivoMime ?? 'application/pdf' } : {}) })) } },
       include: { documentos: { select: DOC_SELECT } },
     });
+    return mapFoto(c);
   }
   async update(sedeId: string, id: string, dto: UpdateConductorDto) {
     await this.findOne(sedeId, id);
     const { documentos, ...rest } = dto;
-    return this.prisma.conductor.update({ where: { id }, data: rest, include: { documentos: { select: DOC_SELECT } } });
+    const c = await this.prisma.conductor.update({ where: { id }, data: rest, include: { documentos: { select: DOC_SELECT } } });
+    return mapFoto(c);
+  }
+  async setFoto(sedeId: string, id: string, dto: FotoDto) {
+    await this.findOne(sedeId, id);
+    await this.prisma.conductor.update({ where: { id }, data: { foto: Buffer.from(dto.fotoBase64, 'base64'), fotoMime: dto.fotoMime ?? 'image/jpeg' } });
+    return this.findOne(sedeId, id);
+  }
+  async removeFoto(sedeId: string, id: string) {
+    await this.findOne(sedeId, id);
+    await this.prisma.conductor.update({ where: { id }, data: { foto: null, fotoMime: null } });
+    return this.findOne(sedeId, id);
   }
   async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.conductor.delete({ where: { id } }); }
 
@@ -100,6 +126,9 @@ class ConductoresController {
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateConductorDto) { return this.service.create(u.sedeId, dto); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateConductorDto) { return this.service.update(u.sedeId, id, dto); }
   @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
+
+  @Patch(':id/foto') setFoto(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: FotoDto) { return this.service.setFoto(u.sedeId, id, dto); }
+  @Delete(':id/foto') removeFoto(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.removeFoto(u.sedeId, id); }
 
   @Post(':id/documentos') addDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: DocumentoDto) { return this.service.addDoc(u.sedeId, id, dto); }
   @Patch(':id/documentos/:docId') renovarDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('docId') docId: string, @Body() dto: RenovarDocumentoDto) { return this.service.renovarDoc(u.sedeId, id, docId, dto); }

@@ -40,18 +40,44 @@ function mapDoc(dto: DocumentoDto | RenovarDocumentoDto) {
   return base;
 }
 
+class FotoDto {
+  @IsString() @IsNotEmpty() fotoBase64: string;
+  @IsString() @IsOptional() fotoMime?: string;
+}
+
+// Convierte la foto (binario) a data URI y quita los bytes crudos de la respuesta.
+function mapFoto(row: any) {
+  if (!row) return row;
+  const foto = row.foto ? `data:${row.fotoMime || 'image/jpeg'};base64,${Buffer.from(row.foto).toString('base64')}` : null;
+  const { foto: _f, fotoMime: _m, ...rest } = row;
+  return { ...rest, foto };
+}
+
 @Injectable()
 class VehiculosService {
   constructor(private prisma: PrismaService) {}
-  findAll(sedeId: string) { return this.prisma.vehiculo.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: { documentos: { select: DOC_SELECT } } }); }
+  async findAll(sedeId: string) {
+    const vs = await this.prisma.vehiculo.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: { documentos: { select: DOC_SELECT } } });
+    return vs.map(mapFoto);
+  }
   async findOne(sedeId: string, id: string) {
     const v = await this.prisma.vehiculo.findFirst({ where: { id, sedeId }, include: { documentos: { select: DOC_SELECT } } });
     if (!v) throw new NotFoundException('Vehículo no encontrado');
-    return v;
+    return mapFoto(v);
   }
-  create(sedeId: string, dto: CreateVehiculoDto) { return this.prisma.vehiculo.create({ data: { ...dto, sedeId } as any }); }
-  async update(sedeId: string, id: string, dto: UpdateVehiculoDto) { await this.findOne(sedeId, id); return this.prisma.vehiculo.update({ where: { id }, data: dto, include: { documentos: { select: DOC_SELECT } } }); }
+  async create(sedeId: string, dto: CreateVehiculoDto) { return mapFoto(await this.prisma.vehiculo.create({ data: { ...dto, sedeId } as any, include: { documentos: { select: DOC_SELECT } } })); }
+  async update(sedeId: string, id: string, dto: UpdateVehiculoDto) { await this.findOne(sedeId, id); return mapFoto(await this.prisma.vehiculo.update({ where: { id }, data: dto, include: { documentos: { select: DOC_SELECT } } })); }
   async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); return this.prisma.vehiculo.delete({ where: { id } }); }
+  async setFoto(sedeId: string, id: string, dto: FotoDto) {
+    await this.findOne(sedeId, id);
+    await this.prisma.vehiculo.update({ where: { id }, data: { foto: Buffer.from(dto.fotoBase64, 'base64'), fotoMime: dto.fotoMime ?? 'image/jpeg' } });
+    return this.findOne(sedeId, id);
+  }
+  async removeFoto(sedeId: string, id: string) {
+    await this.findOne(sedeId, id);
+    await this.prisma.vehiculo.update({ where: { id }, data: { foto: null, fotoMime: null } });
+    return this.findOne(sedeId, id);
+  }
 
   // --- Documentos ---
   async addDoc(sedeId: string, id: string, dto: DocumentoDto) {
@@ -86,6 +112,9 @@ class VehiculosController {
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateVehiculoDto) { return this.service.create(u.sedeId, dto); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateVehiculoDto) { return this.service.update(u.sedeId, id, dto); }
   @Roles('Administrador') @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
+
+  @Patch(':id/foto') setFoto(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: FotoDto) { return this.service.setFoto(u.sedeId, id, dto); }
+  @Delete(':id/foto') removeFoto(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.removeFoto(u.sedeId, id); }
 
   @Post(':id/documentos') addDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: DocumentoDto) { return this.service.addDoc(u.sedeId, id, dto); }
   @Patch(':id/documentos/:docId') renovarDoc(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('docId') docId: string, @Body() dto: RenovarDocumentoDto) { return this.service.renovarDoc(u.sedeId, id, docId, dto); }
