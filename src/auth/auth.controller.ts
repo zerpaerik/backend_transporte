@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
+import { LoginDto, CambiarSedeDto } from './dto/login.dto';
 import { CurrentUser, JwtUser, Public } from '../common/decorators';
 
 @Controller('auth')
@@ -16,5 +16,10 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: JwtUser) {
     return user;
+  }
+
+  @Post('cambiar-sede')
+  cambiarSede(@CurrentUser() user: JwtUser, @Body() dto: CambiarSedeDto) {
+    return this.auth.cambiarSede(user, dto.sedeId);
   }
 }

@@ -12,3 +12,9 @@ export class LoginDto {
   @IsNotEmpty({ message: 'Debes seleccionar una sede' })
   sedeId: string;
 }
+
+export class CambiarSedeDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Debes seleccionar una sede' })
+  sedeId: string;
+}
