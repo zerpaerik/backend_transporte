@@ -5,6 +5,10 @@ import { AppModule } from './app.module';
 import { DateSerializerInterceptor } from './common/date-serializer.interceptor';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 
+// Zona horaria del backend: Perú (America/Lima). Se puede sobreescribir con la
+// variable de entorno TZ. Afecta a new Date(), rangos de fecha y logs.
+process.env.TZ = process.env.TZ || 'America/Lima';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
