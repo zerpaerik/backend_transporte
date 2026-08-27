@@ -46,7 +46,7 @@ class DashboardService {
       .sort((a, b) => a.dias - b.dias);
 
     const devoluciones = viajes
-      .filter((v) => v.estado !== 'Culminado' && v.estado !== 'Devuelto' && v.fechaLimite)
+      .filter((v) => v.estado !== 'Culminado' && v.estado !== 'Devuelto' && v.estado !== 'Cancelado' && v.fechaLimite)
       .map((v) => ({
         contenedor: v.contenedor, cliente: v.cliente, placaTracto: v.placaTracto,
         devolucion: v.devolucion, fechaLimite: iso(v.fechaLimite as Date), dias: dias(v.fechaLimite as Date),
@@ -76,7 +76,7 @@ class DashboardService {
       },
       mantenimientoPorTipo: countByCosto(ordenes),
       facturasPorEstado: countBy(facturas, (f) => f.estadoSunat, ['Emitida', 'Aceptada', 'Pagada', 'Anulada']),
-      viajesPorEstado: countBy(viajes, (v) => v.estado, ['Programado', 'En curso', 'Culminado', 'Devuelto']),
+      viajesPorEstado: countBy(viajes, (v) => v.estado, ['Programado', 'En curso', 'Culminado', 'Devuelto', 'Cancelado']),
       ventasPorCliente,
       documentosAlerta,
       devoluciones,
