@@ -6,13 +6,13 @@ import { CurrentUser, JwtUser } from '../common/decorators';
 import { ComisionesModule, ComisionesService } from '../comisiones/comisiones.module';
 
 class CreateViajeDto {
-  @IsString() @IsNotEmpty() placaTracto: string;
+  @IsString() @IsNotEmpty({ message: 'La placa del tracto es obligatoria (agrega tractos en Flota).' }) placaTracto: string;
   @IsString() @IsOptional() carreta?: string;
   @IsString() @IsOptional() conductor?: string;
-  @IsString() @IsNotEmpty() cliente: string;
+  @IsString() @IsNotEmpty({ message: 'El cliente es obligatorio.' }) cliente: string;
   @IsNumber() @Min(0) @IsOptional() tarifa?: number;
-  @IsString() @IsNotEmpty() operacion: string;
-  @IsString() @IsNotEmpty() contenedor: string;
+  @IsString() @IsNotEmpty({ message: 'El tipo de operación es obligatorio.' }) operacion: string;
+  @IsString() @IsNotEmpty({ message: 'El contenedor es obligatorio.' }) contenedor: string;
   @IsString() @IsOptional() tamanio?: string;
   @IsString() @IsOptional() tipoCarga?: string;
   @IsString() @IsOptional() horaCita?: string;
