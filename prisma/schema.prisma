@@ -278,6 +278,8 @@ model Viaje {
   tamanio       String    @default("")
   tipoCarga     String    @default("")
   horaCita      String    @default("")
+  fechaCliente  DateTime? @db.Date // fecha en la que debe estar en el cliente
+  horaCliente   String    @default("") // hora en la que debe estar en el cliente
   origen        String    @default("")
   destino       String    @default("")
   devolucion    String    @default("")
