@@ -12,7 +12,8 @@ class CreateViajeDto {
   @IsString() @IsNotEmpty({ message: 'El cliente es obligatorio.' }) cliente: string;
   @IsNumber() @Min(0) @IsOptional() tarifa?: number;
   @IsString() @IsNotEmpty({ message: 'El tipo de operación es obligatorio.' }) operacion: string;
-  @IsString() @IsNotEmpty({ message: 'El contenedor es obligatorio.' }) contenedor: string;
+  // El contenedor es opcional: en importación se programa el viaje y se registra al recogerlo (editando).
+  @IsString() @IsOptional() contenedor?: string;
   @IsString() @IsOptional() tamanio?: string;
   @IsString() @IsOptional() tipoCarga?: string;
   @IsString() @IsOptional() horaCita?: string;
@@ -63,7 +64,7 @@ class ViajesService {
     const cli = await this.prisma.cliente.findFirst({ where: { sedeId, nombre: dto.cliente } });
     const comisionChofer = await this.comisiones.montoPara(sedeId, dto.destino ?? '', dto.tipoCarga ?? '');
     return this.prisma.viaje.create({
-      data: { ...toData(dto), sedeId, codigo, clienteRuc: cli?.ruc ?? '', clienteDireccion: cli?.direccion ?? '', comisionChofer, origen: dto.origen ?? '', destino: dto.destino ?? '', devolucion: dto.devolucion ?? '' },
+      data: { ...toData(dto), sedeId, codigo, clienteRuc: cli?.ruc ?? '', clienteDireccion: cli?.direccion ?? '', comisionChofer, contenedor: dto.contenedor ?? '', origen: dto.origen ?? '', destino: dto.destino ?? '', devolucion: dto.devolucion ?? '' },
     });
   }
   async update(sedeId: string, id: string, dto: UpdateViajeDto) { await this.findOne(sedeId, id); return this.prisma.viaje.update({ where: { id }, data: toData(dto) }); }
