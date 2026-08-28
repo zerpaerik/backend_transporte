@@ -7,7 +7,7 @@ import { map } from 'rxjs/operators';
  * para que el frontend las reciba en el mismo formato que usa internamente.
  * Los timestamps createdAt/updatedAt se dejan como ISO completo.
  */
-const DATE_ONLY_FIELDS = new Set(['vencimiento', 'fecha', 'fechaLimite', 'semanaDesde', 'semanaHasta', 'citaFecha']);
+const DATE_ONLY_FIELDS = new Set(['vencimiento', 'fecha', 'fechaLimite', 'semanaDesde', 'semanaHasta', 'citaFecha', 'fechaCliente']);
 
 function transform(value: any): any {
   if (Array.isArray(value)) return value.map(transform);
