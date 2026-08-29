@@ -232,6 +232,7 @@ model Repuesto {
   nombre    String
   categoria String
   calidad   String // Original | Alternativo | Remanufacturado
+  placa     String   @default("") // vehículo (tracto o carreta) al que pertenece
   cantidad  Int      @default(1)
   garantia  String
   proveedor String
