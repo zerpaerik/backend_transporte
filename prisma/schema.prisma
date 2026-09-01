@@ -172,17 +172,20 @@ model Comision {
 }
 
 model Planilla {
-  id                String          @id @default(uuid())
+  id                String              @id @default(uuid())
   sedeId            String
   conductor         String
-  semanaDesde       DateTime        @db.Date
-  semanaHasta       DateTime        @db.Date
-  sueldoDia         Float           @default(0)
-  descuentoPlanilla Float           @default(0)
-  estado            String          @default("Borrador") // Borrador | Generada | Pagada
+  semanaDesde       DateTime            @db.Date
+  semanaHasta       DateTime            @db.Date
+  sueldoDia         Float               @default(0)
+  descuentoPlanilla Float               @default(0) // heredado: migrado a "descuentos"
+  estado            String              @default("Borrador") // Borrador | Generada | Aprobada | Pagada
+  aprobadaPor       String              @default("") // usuario que aprobó antes de pagar
+  aprobadaEn        DateTime? // cuándo se aprobó
   lineas            PlanillaLinea[]
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  descuentos        PlanillaDescuento[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@index([sedeId])
   @@map("planillas")
@@ -205,6 +208,18 @@ model PlanillaLinea {
 
   @@index([planillaId])
   @@map("planilla_lineas")
+}
+
+model PlanillaDescuento {
+  id         String   @id @default(uuid())
+  planilla   Planilla @relation(fields: [planillaId], references: [id], onDelete: Cascade)
+  planillaId String
+  concepto   String   @default("")
+  monto      Float    @default(0)
+  orden      Int      @default(0)
+
+  @@index([planillaId])
+  @@map("planilla_descuentos")
 }
 
 model OrdenTrabajo {
