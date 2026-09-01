@@ -25,11 +25,18 @@ class LineaDto {
   @IsNumber() @IsOptional() orden?: number;
 }
 
+class DescuentoDto {
+  @IsString() @IsOptional() concepto?: string;
+  @IsNumber() @Min(0) monto: number;
+  @IsNumber() @IsOptional() orden?: number;
+}
+
 class UpdatePlanillaDto {
   @IsNumber() @Min(0) @IsOptional() sueldoDia?: number;
-  @IsNumber() @Min(0) @IsOptional() descuentoPlanilla?: number;
-  @IsIn(['Borrador', 'Generada', 'Pagada']) @IsOptional() estado?: string;
+  // Solo se permite mover entre Borrador y Generada por aquí; aprobar y pagar tienen su propia ruta.
+  @IsIn(['Borrador', 'Generada']) @IsOptional() estado?: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => LineaDto) @IsOptional() lineas?: LineaDto[];
+  @IsArray() @ValidateNested({ each: true }) @Type(() => DescuentoDto) @IsOptional() descuentos?: DescuentoDto[];
 }
 
 class ConfigDto {
@@ -37,6 +44,7 @@ class ConfigDto {
 }
 
 const dayISO = (d: Date) => new Date(d).toISOString().slice(0, 10);
+const INCLUDE = { lineas: { orderBy: { orden: 'asc' as const } }, descuentos: { orderBy: { orden: 'asc' as const } } };
 
 @Injectable()
 class PlanillasService {
@@ -48,8 +56,9 @@ class PlanillasService {
     const totalComision = lineas.reduce((s: number, l: any) => s + l.comision, 0);
     const totalViaticos = lineas.reduce((s: number, l: any) => s + l.viaticos, 0);
     const totalPagar = totalSueldo + totalComision + totalViaticos;
-    const aDepositar = totalPagar - (p.descuentoPlanilla ?? 0);
-    return { ...p, totalSueldo, totalComision, totalViaticos, totalPagar, aDepositar };
+    const totalDescuento = (p.descuentos ?? []).reduce((s: number, d: any) => s + (d.monto || 0), 0);
+    const aDepositar = totalPagar - totalDescuento;
+    return { ...p, totalSueldo, totalComision, totalViaticos, totalPagar, totalDescuento, aDepositar };
   }
 
   async config(sedeId: string) {
@@ -62,11 +71,11 @@ class PlanillasService {
   }
 
   async findAll(sedeId: string) {
-    const ps = await this.prisma.planilla.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: { lineas: true } });
+    const ps = await this.prisma.planilla.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' }, include: INCLUDE });
     return ps.map((p) => this.withTotals(p));
   }
   async findOne(sedeId: string, id: string) {
-    const p = await this.prisma.planilla.findFirst({ where: { id, sedeId }, include: { lineas: { orderBy: { orden: 'asc' } } } });
+    const p = await this.prisma.planilla.findFirst({ where: { id, sedeId }, include: INCLUDE });
     if (!p) throw new NotFoundException('Planilla no encontrada');
     return this.withTotals(p);
   }
@@ -77,17 +86,17 @@ class PlanillasService {
       this.prisma.conductor.findFirst({ where: { sedeId, nombre: dto.conductor }, select: { descuentoMensual: true } }),
     ]);
     const sueldoDia = sede?.sueldoDia ?? 0;
-    const descuentoPlanilla = Math.round(((cond?.descuentoMensual ?? 0) / 4) * 100) / 100;
+    const cuotaSemanal = Math.round(((cond?.descuentoMensual ?? 0) / 4) * 100) / 100;
 
     const desde = new Date(dto.semanaDesde + 'T00:00:00');
     const hasta = new Date(dto.semanaHasta + 'T23:59:59');
     const semanaDesde = new Date(dto.semanaDesde);
     const semanaHasta = new Date(dto.semanaHasta);
 
-    // Viajes ya consumidos por una planilla finalizada (Generada) o pagada:
+    // Viajes ya consumidos por una planilla finalizada (Generada), aprobada o pagada:
     // no vuelven a listarse (incluye "días trabajados" sin comisión).
     const finalizadas = await this.prisma.planilla.findMany({
-      where: { sedeId, estado: { in: ['Generada', 'Pagada'] } },
+      where: { sedeId, estado: { in: ['Generada', 'Aprobada', 'Pagada'] } },
       select: { lineas: { select: { viajeId: true } } },
     });
     const consumidos = finalizadas.flatMap((p) => p.lineas.map((l) => l.viajeId)).filter(Boolean);
@@ -146,9 +155,12 @@ class PlanillasService {
     const planilla = await this.prisma.planilla.create({
       data: {
         sedeId, conductor: dto.conductor, semanaDesde, semanaHasta,
-        sueldoDia, descuentoPlanilla, estado: 'Borrador', lineas: { create: nuevasLineas },
+        sueldoDia, estado: 'Borrador',
+        lineas: { create: nuevasLineas },
+        // Arranca con la cuota semanal del conductor como primer descuento (si tiene).
+        ...(cuotaSemanal > 0 ? { descuentos: { create: [{ concepto: 'Cuota semanal', monto: cuotaSemanal, orden: 0 }] } } : {}),
       },
-      include: { lineas: { orderBy: { orden: 'asc' } } },
+      include: INCLUDE,
     });
     return this.withTotals(planilla);
   }
@@ -156,9 +168,15 @@ class PlanillasService {
   async update(sedeId: string, id: string, dto: UpdatePlanillaDto) {
     const actual = await this.findOne(sedeId, id);
     if (actual.estado === 'Pagada') throw new BadRequestException('La planilla ya está pagada; no se puede editar.');
-    const { lineas, ...rest } = dto;
-    // Las líneas solo se editan mientras está en Borrador (para finalizar hay que reabrir).
-    if (lineas && actual.estado !== 'Borrador') throw new BadRequestException('Reabre la planilla para editar sus líneas.');
+    const { lineas, descuentos, ...rest } = dto;
+    // Líneas y descuentos solo se editan en Borrador (para cambiarlos hay que reabrir).
+    if ((lineas || descuentos) && actual.estado !== 'Borrador') {
+      throw new BadRequestException('Reabre la planilla para editar sus líneas o descuentos.');
+    }
+    const data: any = { ...rest };
+    // Al reabrir (volver a Borrador) se limpia la aprobación previa.
+    if (rest.estado === 'Borrador') { data.aprobadaPor = ''; data.aprobadaEn = null; }
+
     if (lineas) {
       await this.prisma.planillaLinea.deleteMany({ where: { planillaId: id } });
       await this.prisma.planillaLinea.createMany({
@@ -169,7 +187,15 @@ class PlanillasService {
         })),
       });
     }
-    await this.prisma.planilla.update({ where: { id }, data: rest });
+    if (descuentos) {
+      await this.prisma.planillaDescuento.deleteMany({ where: { planillaId: id } });
+      if (descuentos.length) {
+        await this.prisma.planillaDescuento.createMany({
+          data: descuentos.map((d, i) => ({ planillaId: id, concepto: d.concepto ?? '', monto: d.monto ?? 0, orden: d.orden ?? i })),
+        });
+      }
+    }
+    await this.prisma.planilla.update({ where: { id }, data });
     return this.findOne(sedeId, id);
   }
 
@@ -186,8 +212,21 @@ class PlanillasService {
     return { ok: true };
   }
 
+  // Finalizada (Generada) → Aprobada. Deja registro de quién aprobó y cuándo.
+  async aprobar(sedeId: string, id: string, user: JwtUser) {
+    const p = await this.findOne(sedeId, id);
+    if (p.estado !== 'Generada') throw new BadRequestException('Solo se puede aprobar una planilla finalizada.');
+    await this.prisma.planilla.update({
+      where: { id },
+      data: { estado: 'Aprobada', aprobadaPor: user.nombre || user.email, aprobadaEn: new Date() },
+    });
+    return this.findOne(sedeId, id);
+  }
+
   async pagar(sedeId: string, id: string) {
     const p = await this.findOne(sedeId, id);
+    // El pago requiere aprobación previa.
+    if (p.estado !== 'Aprobada') throw new BadRequestException('La planilla debe estar aprobada antes de pagarse.');
     // Marcar como saldada la comisión de cada viaje incluido en la planilla,
     // para que no se vuelva a jalar en una planilla futura ni figure como pendiente en Comisiones.
     const viajeIds = (p.lineas ?? []).map((l: any) => l.viajeId).filter(Boolean);
@@ -203,10 +242,10 @@ class PlanillasService {
   async reversar(sedeId: string, id: string) {
     const p = await this.findOne(sedeId, id);
     if (p.estado !== 'Pagada') throw new BadRequestException('Solo se puede reversar una planilla pagada.');
-    // Vuelve a Borrador y libera los viajes (comisión otra vez pendiente) para poder corregir.
+    // Vuelve a Borrador (limpia la aprobación) y libera los viajes (comisión otra vez pendiente) para poder corregir.
     const viajeIds = (p.lineas ?? []).map((l: any) => l.viajeId).filter(Boolean);
     await this.prisma.$transaction([
-      this.prisma.planilla.update({ where: { id }, data: { estado: 'Borrador' } }),
+      this.prisma.planilla.update({ where: { id }, data: { estado: 'Borrador', aprobadaPor: '', aprobadaEn: null } }),
       ...(viajeIds.length
         ? [this.prisma.viaje.updateMany({ where: { sedeId, id: { in: viajeIds } }, data: { comisionPagada: false, comisionFechaPago: null } })]
         : []),
@@ -225,6 +264,7 @@ class PlanillasController {
   @Post('generar') generar(@CurrentUser() u: JwtUser, @Body() dto: GenerarDto) { return this.service.generar(u.sedeId, dto); }
   @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdatePlanillaDto) { return this.service.update(u.sedeId, id, dto); }
+  @Post(':id/aprobar') aprobar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.aprobar(u.sedeId, id, u); }
   @Post(':id/pagar') pagar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.pagar(u.sedeId, id); }
   @Post(':id/reversar') reversar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.reversar(u.sedeId, id); }
   @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
