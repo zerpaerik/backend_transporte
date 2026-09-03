@@ -23,6 +23,7 @@ import { PuertosModule } from './puertos/puertos.module';
 import { ComisionesModule } from './comisiones/comisiones.module';
 import { PlanillasModule } from './planillas/planillas.module';
 import { CombustibleModule } from './combustible/combustible.module';
+import { ArchivosModule } from './archivos/archivos.module';
 import { DevolucionesModule } from './devoluciones/devoluciones.module';
 
 @Module({
@@ -48,6 +49,7 @@ import { DevolucionesModule } from './devoluciones/devoluciones.module';
     PlanillasModule,
     DevolucionesModule,
     CombustibleModule,
+    ArchivosModule,
   ],
   controllers: [AppController],
   providers: [

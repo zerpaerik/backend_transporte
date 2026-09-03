@@ -338,6 +338,39 @@ model Viaje {
   @@map("viajes")
 }
 
+// Gestor documental: carpetas anidadas + archivos, por sede.
+model Carpeta {
+  id        String    @id @default(uuid())
+  sedeId    String
+  nombre    String
+  parentId  String? // null = carpeta raíz
+  parent    Carpeta?  @relation("CarpetaHijos", fields: [parentId], references: [id], onDelete: Cascade)
+  hijos     Carpeta[] @relation("CarpetaHijos")
+  archivos  Archivo[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([sedeId])
+  @@index([parentId])
+  @@map("carpetas")
+}
+
+model Archivo {
+  id        String   @id @default(uuid())
+  sedeId    String
+  carpetaId String
+  carpeta   Carpeta  @relation(fields: [carpetaId], references: [id], onDelete: Cascade)
+  nombre    String
+  mime      String   @default("application/octet-stream")
+  size      Int      @default(0)
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([sedeId])
+  @@index([carpetaId])
+  @@map("archivos")
+}
+
 model Combustible {
   id              String   @id @default(uuid())
   fecha           DateTime @db.Date
