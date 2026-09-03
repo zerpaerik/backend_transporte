@@ -294,6 +294,8 @@ model Viaje {
   tamanio       String    @default("")
   tipoCarga     String    @default("")
   horaCita      String    @default("")
+  fechaViaje    DateTime? @db.Date // fecha del viaje, ingresada a mano (independiente del registro)
+  observacion   String    @default("") // notas libres del viaje
   fechaCliente  DateTime? @db.Date // fecha en la que debe estar en el cliente
   horaCliente   String    @default("") // hora en la que debe estar en el cliente
   origen        String    @default("")
@@ -334,6 +336,26 @@ model Viaje {
 
   @@index([sedeId])
   @@map("viajes")
+}
+
+model Combustible {
+  id              String   @id @default(uuid())
+  fecha           DateTime @db.Date
+  placa           String // vehículo (tracto o carreta)
+  tipoCombustible String   @default("Diésel") // Diésel | Gasolina | GNV | GLP
+  kilometraje     Int      @default(0) // odómetro al momento de cargar
+  galones         Float    @default(0)
+  monto           Float    @default(0) // soles
+  tipoPago        String   @default("") // Transferencia | Efectivo | Crédito | Vale
+  observacion     String   @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sedeId String
+
+  @@index([sedeId])
+  @@map("combustible")
 }
 
 model CitaArchivo {

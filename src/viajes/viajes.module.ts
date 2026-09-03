@@ -17,6 +17,8 @@ class CreateViajeDto {
   @IsString() @IsOptional() tamanio?: string;
   @IsString() @IsOptional() tipoCarga?: string;
   @IsString() @IsOptional() horaCita?: string;
+  @IsDateString() @IsOptional() fechaViaje?: string;
+  @IsString() @IsOptional() observacion?: string;
   @IsDateString() @IsOptional() fechaCliente?: string;
   @IsString() @IsOptional() horaCliente?: string;
   @IsString() @IsOptional() origen?: string;
@@ -33,10 +35,11 @@ class CreateViajeDto {
 class UpdateViajeDto extends PartialType(CreateViajeDto) {}
 
 function toData(dto: Partial<CreateViajeDto>) {
-  const { fechaLimite, fechaCliente, ...rest } = dto;
+  const { fechaLimite, fechaCliente, fechaViaje, ...rest } = dto;
   const data: any = { ...rest };
   if (fechaLimite !== undefined) data.fechaLimite = fechaLimite ? new Date(fechaLimite) : null;
   if (fechaCliente !== undefined) data.fechaCliente = fechaCliente ? new Date(fechaCliente) : null;
+  if (fechaViaje !== undefined) data.fechaViaje = fechaViaje ? new Date(fechaViaje) : null;
   return data;
 }
 
@@ -44,7 +47,13 @@ function toData(dto: Partial<CreateViajeDto>) {
 class ViajesService {
   constructor(private prisma: PrismaService, private comisiones: ComisionesService) {}
 
-  findAll(sedeId: string) { return this.prisma.viaje.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' } }); }
+  // Un conductor solo ve sus propios viajes (se relacionan por su nombre).
+  findAll(sedeId: string, soloConductor?: string) {
+    return this.prisma.viaje.findMany({
+      where: { sedeId, ...(soloConductor ? { conductor: soloConductor } : {}) },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
   async findOne(sedeId: string, id: string) {
     const v = await this.prisma.viaje.findFirst({ where: { id, sedeId } });
     if (!v) throw new NotFoundException('Viaje no encontrado');
@@ -77,7 +86,7 @@ class ViajesService {
 @Controller('viajes')
 class ViajesController {
   constructor(private readonly service: ViajesService) {}
-  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId, u.rol === 'Conductor' ? u.nombre : undefined); }
   @Get('codigo/:codigo') byCodigo(@CurrentUser() u: JwtUser, @Param('codigo') codigo: string) { return this.service.findByCodigo(u.sedeId, codigo); }
   @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateViajeDto) { return this.service.create(u.sedeId, dto); }
