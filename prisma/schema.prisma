@@ -230,6 +230,7 @@ model OrdenTrabajo {
   descripcion String
   responsable String
   conductor   String
+  kilometraje Int      @default(0)
   costo       Float    @default(0)
   estado      String   @default("Abierta") // Abierta | En proceso | Cerrada
 
@@ -248,6 +249,7 @@ model Repuesto {
   categoria String
   calidad   String // Original | Alternativo | Remanufacturado
   placa     String   @default("") // vehículo (tracto o carreta) al que pertenece
+  kilometraje Int    @default(0)
   cantidad  Int      @default(1)
   garantia  String
   proveedor String

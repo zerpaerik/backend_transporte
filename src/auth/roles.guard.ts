@@ -20,6 +20,12 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('No tienes permisos para este módulo.');
     }
 
+    // El rol Contable solo entra al gestor de archivos (con todo permitido allí).
+    if (user?.rol === 'Contable') {
+      if (required && required.includes('Contable')) return true;
+      throw new ForbiddenException('No tienes permisos para este módulo.');
+    }
+
     if (!required || required.length === 0) return true;
     if (user && required.includes(user.rol)) return true;
     throw new ForbiddenException('No tienes permisos para este módulo.');

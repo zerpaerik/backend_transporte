@@ -109,16 +109,22 @@ class PlanillasService {
     });
     const yaEnBorrador = new Set((borrador?.lineas ?? []).map((l) => l.viajeId).filter(Boolean));
 
+    // La fecha que manda es la del viaje (manual de Operaciones); si no tiene, la de registro.
+    const fvDesde = new Date(dto.semanaDesde + 'T00:00:00Z');
+    const fvHasta = new Date(dto.semanaHasta + 'T00:00:00Z');
     const viajes = await this.prisma.viaje.findMany({
       where: {
         sedeId,
         conductor: dto.conductor,
-        createdAt: { gte: desde, lte: hasta },
         // comisión ya saldada (por planilla o por el módulo de comisiones)
         comisionPagada: false,
         ...(consumidos.length ? { id: { notIn: consumidos } } : {}),
+        OR: [
+          { fechaViaje: { gte: fvDesde, lte: fvHasta } },
+          { fechaViaje: null, createdAt: { gte: desde, lte: hasta } },
+        ],
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ fechaViaje: 'asc' }, { createdAt: 'asc' }],
     });
     const nuevos = viajes.filter((v) => !yaEnBorrador.has(v.id));
 
@@ -128,7 +134,7 @@ class PlanillasService {
     const baseOrden = borrador ? borrador.lineas.reduce((m, l) => Math.max(m, l.orden), -1) + 1 : 0;
 
     const nuevasLineas = nuevos.map((v, i) => {
-      const dia = dayISO(v.createdAt);
+      const dia = dayISO(v.fechaViaje ?? v.createdAt);
       const primeraDelDia = !diasConSueldo.has(dia);
       diasConSueldo.add(dia);
       return {

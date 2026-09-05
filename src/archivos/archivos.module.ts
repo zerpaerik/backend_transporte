@@ -123,6 +123,11 @@ class ArchivosService {
     if (!a) throw new NotFoundException('Archivo no encontrado');
     return { nombre: a.nombre, mime: a.mime, base64: Buffer.from(a.data).toString('base64') };
   }
+  async renombrarArchivo(sedeId: string, id: string, nombre: string) {
+    const a = await this.prisma.archivo.findFirst({ where: { id, sedeId }, select: { id: true } });
+    if (!a) throw new NotFoundException('Archivo no encontrado');
+    return this.prisma.archivo.update({ where: { id }, data: { nombre: nombre.trim() }, select: ARCHIVO_SELECT });
+  }
   async borrarArchivo(sedeId: string, id: string) {
     const a = await this.prisma.archivo.findFirst({ where: { id, sedeId }, select: { id: true } });
     if (!a) throw new NotFoundException('Archivo no encontrado');
@@ -142,7 +147,7 @@ class ArchivosService {
   }
 }
 
-@Roles('Administrador')
+@Roles('Administrador', 'Contable')
 @Controller('archivos')
 class ArchivosController {
   constructor(private readonly service: ArchivosService) {}
@@ -154,6 +159,7 @@ class ArchivosController {
   @Post('sembrar') sembrar(@CurrentUser() u: JwtUser) { return this.service.sembrarBase(u.sedeId); }
   @Post() subir(@CurrentUser() u: JwtUser, @Body() dto: SubirDto) { return this.service.subir(u.sedeId, dto); }
   @Get(':id/descargar') descargar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.descargar(u.sedeId, id); }
+  @Patch(':id') renombrarArchivo(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: RenombrarDto) { return this.service.renombrarArchivo(u.sedeId, id, dto.nombre); }
   @Delete(':id') borrarArchivo(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.borrarArchivo(u.sedeId, id); }
 }
 

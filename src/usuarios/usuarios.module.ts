@@ -9,7 +9,7 @@ class CreateUsuarioDto {
   @IsString() @IsNotEmpty() nombre: string;
   @IsEmail() email: string;
   @IsString() @MinLength(4) password: string;
-  @IsIn(['Administrador', 'Operador', 'Mecánico', 'Conductor']) @IsOptional() rol?: string;
+  @IsIn(['Administrador', 'Operador', 'Mecánico', 'Conductor', 'Contable']) @IsOptional() rol?: string;
   @IsBoolean() @IsOptional() activo?: boolean;
 }
 class UpdateUsuarioDto extends PartialType(CreateUsuarioDto) {}

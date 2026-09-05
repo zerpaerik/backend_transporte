@@ -8,6 +8,7 @@ class CreateRepuestoDto {
   @IsString() @IsNotEmpty() nombre: string;
   @IsString() @IsOptional() categoria?: string;
   @IsString() @IsOptional() placa?: string;
+  @IsNumber() @Min(0) @IsOptional() kilometraje?: number;
   @IsIn(['Original', 'Alternativo', 'Remanufacturado']) calidad: string;
   @IsInt() @Min(1) @IsOptional() cantidad?: number;
   @IsString() @IsOptional() garantia?: string;

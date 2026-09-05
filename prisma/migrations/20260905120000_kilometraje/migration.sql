@@ -1,0 +1,2 @@
+ALTER TABLE "ordenes_trabajo" ADD COLUMN "kilometraje" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "repuestos" ADD COLUMN "kilometraje" INTEGER NOT NULL DEFAULT 0;

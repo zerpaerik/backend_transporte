@@ -4,7 +4,7 @@ export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 export const ROLES_KEY = 'roles';
-export type Rol = 'Administrador' | 'Operador' | 'Mecánico' | 'Conductor';
+export type Rol = 'Administrador' | 'Operador' | 'Mecánico' | 'Conductor' | 'Contable';
 export const Roles = (...roles: Rol[]) => SetMetadata(ROLES_KEY, roles);
 
 export interface JwtUser {

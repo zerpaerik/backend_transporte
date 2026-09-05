@@ -11,6 +11,7 @@ class CreateOrdenDto {
   @IsString() @IsNotEmpty() descripcion: string;
   @IsString() @IsOptional() responsable?: string;
   @IsString() @IsOptional() conductor?: string;
+  @IsNumber() @Min(0) @IsOptional() kilometraje?: number;
   @IsNumber() @Min(0) @IsOptional() costo?: number;
   @IsIn(['Abierta', 'En proceso', 'Cerrada']) @IsOptional() estado?: string;
 }
