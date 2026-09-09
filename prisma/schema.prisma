@@ -161,6 +161,7 @@ model Agenda {
   fecha       DateTime @db.Date // día del servicio agendado
   cliente     String
   origen      String   @default("") // desde dónde sale la carga (puerto)
+  destino     String   @default("") // a dónde va la carga (distrito)
   devolucion  String   @default("") // dónde se devuelve
   tipoCarga   String   @default("GENERAL") // GENERAL | IMO | REEFER
   unidades    Int      @default(1) // unidades comprometidas

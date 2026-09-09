@@ -8,6 +8,7 @@ class CreateAgendaDto {
   @IsDateString() fecha: string;
   @IsString() @IsNotEmpty() cliente: string;
   @IsString() @IsOptional() origen?: string;
+  @IsString() @IsOptional() destino?: string;
   @IsString() @IsOptional() devolucion?: string;
   @IsString() @IsOptional() tipoCarga?: string;
   @IsInt() @Min(0) @IsOptional() unidades?: number;
@@ -23,18 +24,19 @@ function toData(dto: Partial<CreateAgendaDto>) {
   return data;
 }
 
+// La agenda es COMPARTIDA entre las 3 empresas (no se filtra por sede).
 @Injectable()
 class AgendaService {
   constructor(private prisma: PrismaService) {}
-  findAll(sedeId: string) { return this.prisma.agenda.findMany({ where: { sedeId }, orderBy: { fecha: 'asc' } }); }
+  findAll() { return this.prisma.agenda.findMany({ orderBy: { fecha: 'asc' } }); }
   create(sedeId: string, dto: CreateAgendaDto) { return this.prisma.agenda.create({ data: { ...toData(dto), sedeId } as any }); }
-  async update(sedeId: string, id: string, dto: UpdateAgendaDto) {
-    const a = await this.prisma.agenda.findFirst({ where: { id, sedeId } });
+  async update(id: string, dto: UpdateAgendaDto) {
+    const a = await this.prisma.agenda.findUnique({ where: { id } });
     if (!a) throw new NotFoundException('Servicio no encontrado');
     return this.prisma.agenda.update({ where: { id }, data: toData(dto) });
   }
-  async remove(sedeId: string, id: string) {
-    const a = await this.prisma.agenda.findFirst({ where: { id, sedeId } });
+  async remove(id: string) {
+    const a = await this.prisma.agenda.findUnique({ where: { id } });
     if (!a) throw new NotFoundException('Servicio no encontrado');
     return this.prisma.agenda.delete({ where: { id } });
   }
@@ -44,10 +46,10 @@ class AgendaService {
 @Controller('agenda')
 class AgendaController {
   constructor(private readonly service: AgendaService) {}
-  @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  @Get() findAll() { return this.service.findAll(); }
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateAgendaDto) { return this.service.create(u.sedeId, dto); }
-  @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateAgendaDto) { return this.service.update(u.sedeId, id, dto); }
-  @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
+  @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateAgendaDto) { return this.service.update(id, dto); }
+  @Delete(':id') remove(@Param('id') id: string) { return this.service.remove(id); }
 }
 
 @Module({ controllers: [AgendaController], providers: [AgendaService] })

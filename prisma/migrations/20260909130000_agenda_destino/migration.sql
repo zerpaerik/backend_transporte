@@ -1,0 +1,1 @@
+ALTER TABLE "agenda" ADD COLUMN "destino" TEXT NOT NULL DEFAULT '';
