@@ -156,6 +156,35 @@ model Puerto {
   @@map("puertos")
 }
 
+model Peaje {
+  id        String   @id @default(uuid())
+  destino   String
+  ejes      Int      @default(0)
+  monto     Float    @default(0)
+  sedeId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("peajes")
+}
+
+model Proveedor {
+  id          String   @id @default(uuid())
+  razonSocial String
+  ruc         String   @default("")
+  direccion   String   @default("")
+  contacto    String   @default("")
+  telefono    String   @default("")
+  sedeId      String
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("proveedores")
+}
+
 model Comision {
   id        String   @id @default(uuid())
   destino   String // distrito

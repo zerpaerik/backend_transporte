@@ -24,6 +24,8 @@ import { ComisionesModule } from './comisiones/comisiones.module';
 import { PlanillasModule } from './planillas/planillas.module';
 import { CombustibleModule } from './combustible/combustible.module';
 import { ArchivosModule } from './archivos/archivos.module';
+import { PeajesModule } from './peajes/peajes.module';
+import { ProveedoresModule } from './proveedores/proveedores.module';
 import { DevolucionesModule } from './devoluciones/devoluciones.module';
 
 @Module({
@@ -50,6 +52,8 @@ import { DevolucionesModule } from './devoluciones/devoluciones.module';
     DevolucionesModule,
     CombustibleModule,
     ArchivosModule,
+    PeajesModule,
+    ProveedoresModule,
   ],
   controllers: [AppController],
   providers: [
