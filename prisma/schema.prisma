@@ -156,6 +156,24 @@ model Puerto {
   @@map("puertos")
 }
 
+model Agenda {
+  id          String   @id @default(uuid())
+  fecha       DateTime @db.Date // día del servicio agendado
+  cliente     String
+  origen      String   @default("") // desde dónde sale la carga (puerto)
+  devolucion  String   @default("") // dónde se devuelve
+  tipoCarga   String   @default("GENERAL") // GENERAL | IMO | REEFER
+  unidades    Int      @default(1) // unidades comprometidas
+  observacion String   @default("")
+  estado      String   @default("Programado") // Programado | Confirmado | Realizado | Cancelado
+  sedeId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("agenda")
+}
+
 model Peaje {
   id        String   @id @default(uuid())
   destino   String
@@ -326,6 +344,7 @@ model Viaje {
   tipoCarga     String    @default("")
   horaCita      String    @default("")
   fechaViaje    DateTime? @db.Date // fecha del viaje, ingresada a mano (independiente del registro)
+  memo          DateTime? @db.Date // vencimiento del MEMO (alerta 72h antes)
   observacion   String    @default("") // notas libres del viaje
   fechaCliente  DateTime? @db.Date // fecha en la que debe estar en el cliente
   horaCliente   String    @default("") // hora en la que debe estar en el cliente

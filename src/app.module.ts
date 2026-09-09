@@ -26,6 +26,7 @@ import { CombustibleModule } from './combustible/combustible.module';
 import { ArchivosModule } from './archivos/archivos.module';
 import { PeajesModule } from './peajes/peajes.module';
 import { ProveedoresModule } from './proveedores/proveedores.module';
+import { AgendaModule } from './agenda/agenda.module';
 import { DevolucionesModule } from './devoluciones/devoluciones.module';
 
 @Module({
@@ -54,6 +55,7 @@ import { DevolucionesModule } from './devoluciones/devoluciones.module';
     ArchivosModule,
     PeajesModule,
     ProveedoresModule,
+    AgendaModule,
   ],
   controllers: [AppController],
   providers: [

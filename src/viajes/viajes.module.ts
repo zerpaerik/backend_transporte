@@ -18,6 +18,7 @@ class CreateViajeDto {
   @IsString() @IsOptional() tipoCarga?: string;
   @IsString() @IsOptional() horaCita?: string;
   @IsDateString() @IsOptional() fechaViaje?: string;
+  @IsDateString() @IsOptional() memo?: string;
   @IsString() @IsOptional() observacion?: string;
   @IsDateString() @IsOptional() fechaCliente?: string;
   @IsString() @IsOptional() horaCliente?: string;
@@ -35,11 +36,12 @@ class CreateViajeDto {
 class UpdateViajeDto extends PartialType(CreateViajeDto) {}
 
 function toData(dto: Partial<CreateViajeDto>) {
-  const { fechaLimite, fechaCliente, fechaViaje, ...rest } = dto;
+  const { fechaLimite, fechaCliente, fechaViaje, memo, ...rest } = dto;
   const data: any = { ...rest };
   if (fechaLimite !== undefined) data.fechaLimite = fechaLimite ? new Date(fechaLimite) : null;
   if (fechaCliente !== undefined) data.fechaCliente = fechaCliente ? new Date(fechaCliente) : null;
   if (fechaViaje !== undefined) data.fechaViaje = fechaViaje ? new Date(fechaViaje) : null;
+  if (memo !== undefined) data.memo = memo ? new Date(memo) : null;
   return data;
 }
 
