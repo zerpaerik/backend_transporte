@@ -1,0 +1,1 @@
+ALTER TABLE "viajes" ADD COLUMN "clienteFactura" TEXT NOT NULL DEFAULT '';

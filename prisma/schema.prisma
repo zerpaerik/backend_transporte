@@ -338,7 +338,8 @@ model Viaje {
   placaTracto   String
   carreta       String    @default("")
   conductor     String    @default("")
-  cliente       String
+  cliente       String // cliente que SOLICITA el servicio (p. ej. agencia de aduana)
+  clienteFactura String   @default("") // a quién se factura; si vacío, se factura al solicitante
   operacion     String // IMPO | EXPO | Carga suelta
   contenedor    String
   tamanio       String    @default("")

@@ -10,6 +10,7 @@ class CreateViajeDto {
   @IsString() @IsOptional() carreta?: string;
   @IsString() @IsOptional() conductor?: string;
   @IsString() @IsNotEmpty({ message: 'El cliente es obligatorio.' }) cliente: string;
+  @IsString() @IsOptional() clienteFactura?: string;
   @IsNumber() @Min(0) @IsOptional() tarifa?: number;
   @IsString() @IsNotEmpty({ message: 'El tipo de operación es obligatorio.' }) operacion: string;
   // El contenedor es opcional: en importación se programa el viaje y se registra al recogerlo (editando).
