@@ -481,6 +481,37 @@ model Factura {
   igv         Float    @default(0)
   estadoSunat String   @default("Emitida") // Emitida | Aceptada | Pagada | Anulada
 
+  // --- Facturación electrónica (MiFact / SUNAT) — aditivo, no rompe lo anterior ---
+  tipoDocCodigo     String    @default("01") // 01 factura · 03 boleta · 07 NC · 08 ND
+  correlativo       String    @default("") // número dentro de la serie (lo controla el sistema)
+  moneda            String    @default("PEN")
+  tipoCambio        Float     @default(0) // solo si moneda != PEN
+  gravado           Float     @default(0)
+  exonerado         Float     @default(0)
+  inafecto          Float     @default(0)
+  total             Float     @default(0)
+  // Detracción (SPOT) — transporte de carga
+  sujetoDetraccion  Boolean   @default(false)
+  porcDetraccion    Float     @default(0)
+  montoDetraccion   Float     @default(0)
+  codDetraccion     String    @default("") // 027 transporte de carga
+  ctaDetraccion     String    @default("")
+  // Respuesta SUNAT / MiFact
+  estadoDocumento   String    @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
+  sunatDescripcion  String    @default("")
+  sunatResponsecode String    @default("")
+  hash              String    @default("") // codigo_hash
+  qr                String    @default("") // cadena_para_codigo_qr
+  ticket            String    @default("")
+  emitidoEn         DateTime? // cuándo se envió a SUNAT
+  // Archivos (CDR + XML se guardan siempre; PDF on-demand vía GetInvoice)
+  xml               String? // xml_enviado
+  cdr               String? // cdr_sunat
+  // Referencia para NC/ND
+  docRefTipo        String    @default("")
+  docRefSerie       String    @default("")
+  docRefCorrelativo String    @default("")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -488,6 +519,49 @@ model Factura {
 
   @@index([sedeId])
   @@map("facturas")
+}
+
+// Datos del emisor por sede (editable desde el portal).
+// El TOKEN, el AMBIENTE y la URL base NO viven aquí: son variables de entorno del
+// servidor (seguridad — nadie pasa a producción desde el portal).
+model EmisorConfig {
+  id               String   @id @default(uuid())
+  sedeId           String   @unique
+  ruc              String   @default("")
+  razonSocial      String   @default("")
+  nombreComercial  String   @default("")
+  ubigeo           String   @default("") // COD_UBI_EMIS (6 dígitos del distrito)
+  direccionFiscal  String   @default("")
+  codAnexo         String   @default("0000") // COD_ANEXO_EMIS
+  serieFactura     String   @default("FN01")
+  serieBoleta      String   @default("BN01")
+  serieNotaCredito String   @default("FN01") // NC referida a factura
+  puntoVenta       String   @default("") // COD_PTO_VENTA
+  ctaDetraccion    String   @default("") // NRO_CUENTA_DETRAC (Banco de la Nación)
+  porcDetraccion   Float    @default(4) // POR_DETRACCION
+  codDetraccion    String   @default("027") // COD_TIP_DETRACCION (transporte de carga)
+  umbralDetraccion Float    @default(700) // detracción solo si el total supera este monto
+  correoEnvio      String   @default("") // copia opcional al emitir
+  activo           Boolean  @default(false) // habilita la emisión electrónica para la sede
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("emisor_config")
+}
+
+// Correlativo por (sede, tipo de comprobante, serie). El sistema lo controla en
+// transacción para no duplicar ni saltar números.
+model Correlativo {
+  id        String   @id @default(uuid())
+  sedeId    String
+  tipoDoc   String // 01 · 03 · 07 · 08
+  serie     String
+  siguiente Int      @default(1) // próximo correlativo a emitir
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sedeId, tipoDoc, serie])
+  @@map("correlativos")
 }
 
 model Empleado {

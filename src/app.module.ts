@@ -14,6 +14,7 @@ import { RepuestosModule } from './repuestos/repuestos.module';
 import { NeumaticosModule } from './neumaticos/neumaticos.module';
 import { ViajesModule } from './viajes/viajes.module';
 import { FacturasModule } from './facturas/facturas.module';
+import { FacturacionElectronicaModule } from './facturacion-electronica/facturacion-electronica.module';
 import { EmpleadosModule } from './empleados/empleados.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SedesModule } from './sedes/sedes.module';
@@ -42,6 +43,7 @@ import { DevolucionesModule } from './devoluciones/devoluciones.module';
     NeumaticosModule,
     ViajesModule,
     FacturasModule,
+    FacturacionElectronicaModule,
     EmpleadosModule,
     DashboardModule,
     SedesModule,
