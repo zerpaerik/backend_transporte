@@ -5,6 +5,7 @@ import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 import { MifactConfigService } from './mifact-config.service';
 import { MifactClient } from './mifact.client';
 import { CorrelativosService } from './correlativos.service';
+import { MifactMapper } from './mifact.mapper';
 
 class UpdateEmisorDto {
   @IsString() @IsOptional() ruc?: string;
@@ -63,7 +64,7 @@ class EmisorController {
 
 @Module({
   controllers: [EmisorController],
-  providers: [EmisorService, MifactConfigService, MifactClient, CorrelativosService],
-  exports: [MifactConfigService, MifactClient, CorrelativosService],
+  providers: [EmisorService, MifactConfigService, MifactClient, CorrelativosService, MifactMapper],
+  exports: [MifactConfigService, MifactClient, CorrelativosService, MifactMapper],
 })
 export class FacturacionElectronicaModule {}
