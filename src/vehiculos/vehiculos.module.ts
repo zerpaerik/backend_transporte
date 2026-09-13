@@ -12,6 +12,7 @@ class CreateVehiculoDto {
   @IsInt() anio: number;
   @IsInt() @Min(0) @IsOptional() kilometraje?: number;
   @IsIn(['Operativo', 'En taller', 'Inactivo']) @IsOptional() estado?: string;
+  @IsString() @IsOptional() constanciaTuc?: string; // certificado/TUC para la GRE
 }
 class UpdateVehiculoDto extends PartialType(CreateVehiculoDto) {}
 
