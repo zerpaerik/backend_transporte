@@ -593,6 +593,56 @@ model Correlativo {
   @@map("correlativos")
 }
 
+// Guía de Remisión electrónica del transportista, por viaje.
+model GuiaTransportista {
+  id                String    @id @default(uuid())
+  sedeId            String
+  viajeId           String
+  serie             String    @default("")
+  correlativo       String    @default("")
+  tipoGur           String    @default("31")
+  fechaEmision      DateTime? @db.Date
+  fechaTraslado     DateTime? @db.Date
+  partidaDir        String    @default("")
+  partidaUbigeo     String    @default("")
+  llegadaDir        String    @default("")
+  llegadaUbigeo     String    @default("")
+  remitenteRuc      String    @default("")
+  remitenteRazon    String    @default("")
+  destinatarioRuc   String    @default("")
+  destinatarioRazon String    @default("")
+  conductorNombre   String    @default("")
+  conductorDni      String    @default("")
+  conductorLicencia String    @default("")
+  placaTracto       String    @default("")
+  tucTracto         String    @default("")
+  placaCarreta      String    @default("")
+  tucCarreta        String    @default("")
+  pesoBruto         Float     @default(0)
+  unidad            String    @default("KGM")
+  docRefTipo        String    @default("09") // 09 GRR · 01 factura
+  docRefNumero      String    @default("")
+  pagadorFlete      String    @default("remitente") // remitente | tercero | subcontratado
+  terceroRuc        String    @default("")
+  terceroRazon      String    @default("")
+  trasladoTotal     Boolean   @default(true)
+  observaciones     String    @default("")
+  itemsJson         String    @default("[]") // mercadería (si no la jala SUNAT desde la GRR)
+  // Respuesta SUNAT / MiFact
+  estadoDocumento   String    @default("")
+  sunatDescripcion  String    @default("")
+  hash              String    @default("")
+  cdr               String?
+  xml               String?
+  emitidoEn         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([sedeId])
+  @@index([viajeId])
+  @@map("guias_transportista")
+}
+
 model Empleado {
   id         String @id @default(uuid())
   nombre     String

@@ -1,0 +1,197 @@
+import { Module, Injectable, NotFoundException, BadRequestException, Controller, Get, Post, Param, Body } from '@nestjs/common';
+import { Type } from 'class-transformer';
+import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { PrismaService } from '../prisma/prisma.service';
+import { CurrentUser, JwtUser } from '../common/decorators';
+import { FacturacionElectronicaModule } from '../facturacion-electronica/facturacion-electronica.module';
+import { GreClient } from '../facturacion-electronica/gre.client';
+import { GreMapper, type GreInput } from '../facturacion-electronica/gre.mapper';
+import { MifactConfigService } from '../facturacion-electronica/mifact-config.service';
+import { CorrelativosService } from '../facturacion-electronica/correlativos.service';
+
+class GreItemDto {
+  @IsString() descripcion: string;
+  @IsNumber() @Min(0) @IsOptional() cantidad?: number;
+  @IsNumber() @Min(0) @IsOptional() peso?: number;
+  @IsString() @IsOptional() unidad?: string;
+}
+class GuiaInputDto {
+  @IsDateString() @IsOptional() fechaTraslado?: string;
+  @IsString() @IsOptional() partidaDir?: string;
+  @IsString() @IsOptional() partidaUbigeo?: string;
+  @IsString() @IsOptional() llegadaDir?: string;
+  @IsString() @IsOptional() llegadaUbigeo?: string;
+  @IsString() @IsOptional() destinatarioRuc?: string;
+  @IsString() @IsOptional() destinatarioRazon?: string;
+  @IsNumber() @Min(0) @IsOptional() pesoBruto?: number;
+  @IsString() @IsOptional() docRefTipo?: string;
+  @IsString() @IsOptional() docRefNumero?: string;
+  @IsIn(['remitente', 'tercero', 'subcontratado']) @IsOptional() pagadorFlete?: string;
+  @IsString() @IsOptional() terceroRuc?: string;
+  @IsString() @IsOptional() terceroRazon?: string;
+  @IsString() @IsOptional() observaciones?: string;
+  @IsArray() @ValidateNested({ each: true }) @Type(() => GreItemDto) @IsOptional() items?: GreItemDto[];
+}
+class AnularGuiaDto { @IsString() @IsOptional() motivo?: string; }
+
+const TIPO_GUR = '31'; // guía de remisión del transportista
+
+@Injectable()
+class GuiasService {
+  constructor(
+    private prisma: PrismaService,
+    private gre: GreClient,
+    private mapper: GreMapper,
+    private cfg: MifactConfigService,
+    private correlativos: CorrelativosService,
+  ) {}
+
+  private fechaISO(d: any): string { return new Date(d).toISOString().slice(0, 10); }
+
+  private async ctx(sedeId: string, viajeId: string) {
+    const viaje = await this.prisma.viaje.findFirst({ where: { id: viajeId, sedeId } });
+    if (!viaje) throw new NotFoundException('Viaje no encontrado');
+    const emisor = await this.prisma.emisorConfig.findUnique({ where: { sedeId } });
+    if (!emisor) throw new BadRequestException('Configura primero los datos del emisor.');
+    const [conductor, tracto, carreta] = await Promise.all([
+      viaje.conductor ? this.prisma.conductor.findFirst({ where: { sedeId, nombre: viaje.conductor } }) : null,
+      viaje.placaTracto ? this.prisma.vehiculo.findFirst({ where: { sedeId, placa: viaje.placaTracto } }) : null,
+      viaje.carreta ? this.prisma.vehiculo.findFirst({ where: { sedeId, placa: viaje.carreta } }) : null,
+    ]);
+    return { viaje, emisor, conductor, tracto, carreta };
+  }
+
+  private emisorMap(e: any) {
+    return { registroMtc: e.registroMtc, ruc: e.ruc, razonSocial: e.razonSocial, nombreComercial: e.nombreComercial, ubigeo: e.ubigeo, direccionFiscal: e.direccionFiscal, puntoVenta: e.puntoVenta };
+  }
+
+  private armarInput(c: any, dto: GuiaInputDto, serie: string, correlativo: string): GreInput {
+    const { viaje, conductor, tracto, carreta } = c;
+    const hoy = new Date().toISOString().slice(0, 10);
+    return {
+      serie, correlativo,
+      fechaEmision: hoy,
+      fechaTraslado: dto.fechaTraslado || (viaje.fechaViaje ? this.fechaISO(viaje.fechaViaje) : hoy),
+      partidaDir: dto.partidaDir || viaje.origen || '',
+      partidaUbigeo: dto.partidaUbigeo || '',
+      llegadaDir: dto.llegadaDir || viaje.destino || '',
+      llegadaUbigeo: dto.llegadaUbigeo || '',
+      remitente: { ruc: viaje.clienteRuc || '', razonSocial: viaje.cliente || '' },
+      destinatario: dto.destinatarioRuc || dto.destinatarioRazon ? { ruc: dto.destinatarioRuc, razonSocial: dto.destinatarioRazon } : undefined,
+      conductor: { nombre: viaje.conductor || conductor?.nombre || '', dni: conductor?.dni || '', licencia: conductor?.licencia || '' },
+      placaTracto: viaje.placaTracto || '',
+      tucTracto: tracto?.constanciaTuc || '',
+      placaCarreta: viaje.carreta || '',
+      tucCarreta: carreta?.constanciaTuc || '',
+      pesoBruto: dto.pesoBruto,
+      unidad: 'KGM',
+      items: (dto.items || []).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, peso: i.peso, unidad: i.unidad })),
+      docRefTipo: dto.docRefTipo || '09',
+      docRefNumero: dto.docRefNumero || viaje.factura || '',
+      pagadorFlete: (dto.pagadorFlete as any) || 'remitente',
+      tercero: dto.terceroRuc || dto.terceroRazon ? { ruc: dto.terceroRuc, razonSocial: dto.terceroRazon } : undefined,
+      observaciones: dto.observaciones,
+    };
+  }
+
+  // Arma el JSON SIN enviar nada (para revisar por viaje). Usa el próximo correlativo (peek).
+  async preview(sedeId: string, viajeId: string, dto: GuiaInputDto) {
+    const c = await this.ctx(sedeId, viajeId);
+    const serie = c.emisor.serieGuiaTransportista || 'V001';
+    const correlativo = await this.correlativos.peek(sedeId, TIPO_GUR, serie);
+    const payload = this.mapper.sendGuia(this.armarInput(c, dto, serie, correlativo), this.emisorMap(c.emisor));
+    return { ambiente: this.cfg.ambiente, greConfigurada: this.cfg.greConfigurada, payload };
+  }
+
+  private toData(sedeId: string, viajeId: string, input: GreInput) {
+    const dest = input.destinatario || input.remitente;
+    return {
+      sedeId, viajeId, serie: input.serie, correlativo: input.correlativo, tipoGur: TIPO_GUR,
+      fechaEmision: new Date(input.fechaEmision), fechaTraslado: new Date(input.fechaTraslado),
+      partidaDir: input.partidaDir, partidaUbigeo: input.partidaUbigeo, llegadaDir: input.llegadaDir, llegadaUbigeo: input.llegadaUbigeo,
+      remitenteRuc: input.remitente.ruc || '', remitenteRazon: input.remitente.razonSocial || '',
+      destinatarioRuc: dest.ruc || '', destinatarioRazon: dest.razonSocial || '',
+      conductorNombre: input.conductor.nombre, conductorDni: input.conductor.dni || '', conductorLicencia: input.conductor.licencia || '',
+      placaTracto: input.placaTracto, tucTracto: input.tucTracto || '', placaCarreta: input.placaCarreta || '', tucCarreta: input.tucCarreta || '',
+      pesoBruto: Number(input.pesoBruto || 0), unidad: input.unidad || 'KGM',
+      docRefTipo: input.docRefTipo || '09', docRefNumero: input.docRefNumero || '',
+      pagadorFlete: input.pagadorFlete || 'remitente', terceroRuc: input.tercero?.ruc || '', terceroRazon: input.tercero?.razonSocial || '',
+      trasladoTotal: input.trasladoTotal !== false, observaciones: input.observaciones || '',
+      itemsJson: JSON.stringify(input.items || []),
+    };
+  }
+
+  async emitir(sedeId: string, viajeId: string, dto: GuiaInputDto) {
+    const c = await this.ctx(sedeId, viajeId);
+    if (!c.emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
+    if (!this.cfg.greConfigurada) throw new BadRequestException(`Falta la URL de GRE de MiFact (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
+    const serie = c.emisor.serieGuiaTransportista || 'V001';
+    const correlativo = await this.correlativos.reservar(sedeId, TIPO_GUR, serie);
+    const input = this.armarInput(c, dto, serie, correlativo);
+    const payload = this.mapper.sendGuia(input, this.emisorMap(c.emisor));
+    const guia = await this.prisma.guiaTransportista.create({ data: this.toData(sedeId, viajeId, input) });
+    const resp = await this.gre.sendGuia(payload);
+    const estadoDoc = String(resp.estado_documento || '');
+    await this.prisma.guiaTransportista.update({
+      where: { id: guia.id },
+      data: {
+        estadoDocumento: estadoDoc, sunatDescripcion: resp.sunat_description || resp.errors || '',
+        hash: resp.codigo_hash || '', cdr: resp.cdr_sunat || null, xml: resp.xml_enviado || null, emitidoEn: new Date(),
+      },
+    });
+    const actualizada = await this.prisma.guiaTransportista.findUnique({ where: { id: guia.id } });
+    return { guia: actualizada, respuesta: { estado_documento: estadoDoc, errors: resp.errors || '', sunat_description: resp.sunat_description || '' } };
+  }
+
+  async listar(sedeId: string, viajeId: string) {
+    return this.prisma.guiaTransportista.findMany({ where: { sedeId, viajeId }, orderBy: { createdAt: 'desc' } });
+  }
+
+  private async cargar(sedeId: string, id: string) {
+    const g = await this.prisma.guiaTransportista.findFirst({ where: { id, sedeId } });
+    if (!g) throw new NotFoundException('Guía no encontrada');
+    return g;
+  }
+  private clave(g: any) { return { serie: g.serie, correlativo: g.correlativo, fechaEmision: this.fechaISO(g.fechaEmision) }; }
+  private async emisorDe(sedeId: string) {
+    const e = await this.prisma.emisorConfig.findUnique({ where: { sedeId } });
+    if (!e) throw new BadRequestException('Configura primero los datos del emisor.');
+    return this.emisorMap(e);
+  }
+
+  async estado(sedeId: string, id: string) {
+    const g = await this.cargar(sedeId, id);
+    if (!g.correlativo) throw new BadRequestException('La guía aún no fue emitida.');
+    const resp = await this.gre.getEstatusGuia(this.mapper.getEstatus(this.clave(g), await this.emisorDe(sedeId)));
+    await this.prisma.guiaTransportista.update({ where: { id }, data: { estadoDocumento: String(resp.estado_documento || g.estadoDocumento || ''), sunatDescripcion: resp.sunat_description || g.sunatDescripcion } });
+    return this.cargar(sedeId, id);
+  }
+  async pdf(sedeId: string, id: string) {
+    const g = await this.cargar(sedeId, id);
+    if (!g.correlativo) throw new BadRequestException('La guía aún no fue emitida.');
+    const resp = await this.gre.getGuia(this.mapper.getGuia(this.clave(g), await this.emisorDe(sedeId), { pdf: true }));
+    if (!resp.pdf_bytes) throw new BadRequestException('MiFact no devolvió el PDF de la guía.');
+    return { nombre: `${g.serie}-${g.correlativo}.pdf`, mime: 'application/pdf', base64: resp.pdf_bytes };
+  }
+  async anular(sedeId: string, id: string, motivo: string) {
+    const g = await this.cargar(sedeId, id);
+    if (!g.correlativo) throw new BadRequestException('La guía aún no fue emitida.');
+    const resp = await this.gre.lowGuia(this.mapper.lowGuia(this.clave(g), await this.emisorDe(sedeId), motivo || 'ERROR EN EMISION'));
+    await this.prisma.guiaTransportista.update({ where: { id }, data: { estadoDocumento: String(resp.estado_documento || '105'), sunatDescripcion: resp.sunat_description || 'Baja registrada en el portal de MiFact (la anulación ante SUNAT es por Clave SOL).' } });
+    return this.cargar(sedeId, id);
+  }
+}
+
+@Controller('gre')
+class GuiasController {
+  constructor(private readonly service: GuiasService) {}
+  @Get('viaje/:viajeId') listar(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string) { return this.service.listar(u.sedeId, viajeId); }
+  @Post('viaje/:viajeId/preview') preview(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string, @Body() dto: GuiaInputDto) { return this.service.preview(u.sedeId, viajeId, dto); }
+  @Post('viaje/:viajeId/emitir') emitir(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string, @Body() dto: GuiaInputDto) { return this.service.emitir(u.sedeId, viajeId, dto); }
+  @Post(':id/estado') estado(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.estado(u.sedeId, id); }
+  @Get(':id/pdf') pdf(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.pdf(u.sedeId, id); }
+  @Post(':id/anular') anular(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: AnularGuiaDto) { return this.service.anular(u.sedeId, id, dto.motivo || ''); }
+}
+
+@Module({ imports: [FacturacionElectronicaModule], controllers: [GuiasController], providers: [GuiasService] })
+export class GuiasModule {}
