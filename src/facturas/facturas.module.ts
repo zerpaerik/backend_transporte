@@ -148,6 +148,7 @@ class EmisionService {
       items: this.itemsMapper(f),
       valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, detalleViaje: f.detalleViaje,
       formaPago: f.formaPago, fechaVencimiento: f.fechaVencimiento ? this.fechaISO(f.fechaVencimiento) : null,
+      referencia: f.referenciaVR,
       docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, motivo: f.motivo,
     };
   }
