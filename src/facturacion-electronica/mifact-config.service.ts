@@ -26,4 +26,13 @@ export class MifactConfigService {
   get integracionConfigurada(): boolean {
     return !!this.baseUrl && !!this.token;
   }
+
+  /** URL del servicio de Guía de Remisión (GuiaRemision.svc). SUNAT no tiene demo de GRE. */
+  get greBaseUrl(): string {
+    const url = this.esProd ? process.env.MIFACT_GRE_BASE_URL_PROD : process.env.MIFACT_GRE_BASE_URL_DEMO;
+    return (url || '').replace(/\/?$/, url ? '/' : '');
+  }
+  get greConfigurada(): boolean {
+    return !!this.greBaseUrl && !!this.token;
+  }
 }

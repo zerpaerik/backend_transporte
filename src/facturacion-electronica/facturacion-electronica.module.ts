@@ -6,6 +6,8 @@ import { MifactConfigService } from './mifact-config.service';
 import { MifactClient } from './mifact.client';
 import { CorrelativosService } from './correlativos.service';
 import { MifactMapper } from './mifact.mapper';
+import { GreClient } from './gre.client';
+import { GreMapper } from './gre.mapper';
 
 class UpdateEmisorDto {
   @IsString() @IsOptional() ruc?: string;
@@ -106,7 +108,7 @@ class EmisorController {
 
 @Module({
   controllers: [EmisorController],
-  providers: [EmisorService, MifactConfigService, MifactClient, CorrelativosService, MifactMapper],
-  exports: [MifactConfigService, MifactClient, CorrelativosService, MifactMapper],
+  providers: [EmisorService, MifactConfigService, MifactClient, CorrelativosService, MifactMapper, GreClient, GreMapper],
+  exports: [MifactConfigService, MifactClient, CorrelativosService, MifactMapper, GreClient, GreMapper],
 })
 export class FacturacionElectronicaModule {}
