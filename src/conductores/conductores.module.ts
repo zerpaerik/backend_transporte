@@ -18,6 +18,7 @@ class RenovarDocumentoDto extends PartialType(DocumentoDto) {}
 class CreateConductorDto {
   @IsString() @IsNotEmpty() nombre: string;
   @IsString() @IsNotEmpty() licencia: string;
+  @IsString() @IsOptional() dni?: string;
   @IsString() @IsOptional() categoria?: string;
   @IsString() @IsOptional() telefono?: string;
   @IsNumber() @Min(0) @IsOptional() descuentoMensual?: number;

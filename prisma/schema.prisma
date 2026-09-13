@@ -49,6 +49,7 @@ model Vehiculo {
   anio        Int
   kilometraje Int    @default(0)
   estado      String @default("Operativo") // Operativo | En taller | Inactivo
+  constanciaTuc String @default("") // Certificado/TUC del vehículo para la GRE (CONSTANCIA_VEHICULAR_TUC)
 
   documentos DocumentoVehiculo[]
 
@@ -69,6 +70,7 @@ model Conductor {
   id              String               @id @default(uuid())
   nombre          String
   licencia        String
+  dni             String               @default("") // para la GRE (NUM_NIF_CONDUCT)
   categoria       String
   telefono         String
   descuentoMensual Float                @default(0)
@@ -561,6 +563,8 @@ model EmisorConfig {
   serieFactura     String   @default("FN01")
   serieBoleta      String   @default("BN01")
   serieNotaCredito String   @default("FN01") // NC referida a factura
+  serieGuiaTransportista String @default("V001") // serie de la GRE del transportista
+  registroMtc      String   @default("") // NRO_REGISTRO_MTC del transportista (GRE)
   puntoVenta       String   @default("") // COD_PTO_VENTA
   ctaDetraccion    String   @default("") // NRO_CUENTA_DETRAC (Banco de la Nación)
   porcDetraccion   Float    @default(4) // POR_DETRACCION

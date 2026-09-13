@@ -17,6 +17,8 @@ class UpdateEmisorDto {
   @IsString() @IsOptional() serieFactura?: string;
   @IsString() @IsOptional() serieBoleta?: string;
   @IsString() @IsOptional() serieNotaCredito?: string;
+  @IsString() @IsOptional() serieGuiaTransportista?: string;
+  @IsString() @IsOptional() registroMtc?: string;
   @IsString() @IsOptional() puntoVenta?: string;
   @IsString() @IsOptional() ctaDetraccion?: string;
   @IsNumber() @Min(0) @IsOptional() porcDetraccion?: number;
