@@ -9,6 +9,7 @@ import { MifactClient } from '../facturacion-electronica/mifact.client';
 import { MifactConfigService } from '../facturacion-electronica/mifact-config.service';
 import { CorrelativosService } from '../facturacion-electronica/correlativos.service';
 import { MifactMapper, type FacturaMap, type ItemMap } from '../facturacion-electronica/mifact.mapper';
+import { ValorReferencialService } from '../facturacion-electronica/valor-referencial.service';
 
 const TIPO_COD: Record<string, string> = { Factura: '01', Boleta: '03', 'N. Crédito': '07' };
 
@@ -36,6 +37,14 @@ class CreateFacturaDto {
   @IsArray() @ValidateNested({ each: true }) @Type(() => ItemDto) @IsOptional() items?: ItemDto[];
   @IsString() @IsOptional() moneda?: string;
   @IsNumber() @IsOptional() valorReferencial?: number;
+  // Insumos del valor referencial (tablas DS 022-2025-MTC)
+  @IsIn(['', 'local', 'nacional']) @IsOptional() vrAmbito?: string;
+  @IsString() @IsOptional() vrRuta?: string;
+  @IsString() @IsOptional() vrDestino?: string;
+  @IsString() @IsOptional() vrPuerto?: string;
+  @IsString() @IsOptional() vrZona?: string;
+  @IsString() @IsOptional() vrTipoCarga?: string;
+  @IsNumber() @Min(0) @IsOptional() pesoTM?: number;
   @IsString() @IsOptional() referenciaVR?: string;
   @IsString() @IsOptional() guia?: string;
   @IsString() @IsOptional() ubigeoOrigen?: string;
@@ -115,7 +124,26 @@ class EmisionService {
     private correlativos: CorrelativosService,
     private mapper: MifactMapper,
     private mifactCfg: MifactConfigService,
+    private valorRef: ValorReferencialService,
   ) {}
+
+  // Si la factura tiene los insumos del valor referencial (ámbito + ruta/destino o
+  // puerto/zona/tipo de carga), lo recalcula desde las tablas del DS 022-2025-MTC
+  // (fuente autoritativa) en vez de confiar en el número guardado. Si no, deja el
+  // valorReferencial manual que ya tenga.
+  private valorReferencialDe(f: any): number {
+    if (!f.vrAmbito) return f.valorReferencial || 0;
+    try {
+      const { valorReferencial } = this.valorRef.calcular({
+        ambito: f.vrAmbito, pesoTM: f.pesoTM,
+        ruta: f.vrRuta, destino: f.vrDestino,
+        puerto: f.vrPuerto, zona: f.vrZona, tipoCarga: f.vrTipoCarga,
+      });
+      return valorReferencial;
+    } catch {
+      return f.valorReferencial || 0;
+    }
+  }
 
   private async cargar(sedeId: string, id: string) {
     const f = await this.prisma.factura.findFirst({ where: { id, sedeId }, include: { items: { orderBy: { orden: 'asc' } } } });
@@ -200,6 +228,14 @@ class EmisionService {
     if (!this.mifactCfg.integracionConfigurada) throw new BadRequestException(`Falta configurar MiFact para el ambiente "${this.mifactCfg.ambiente}".`);
     const f = await this.cargar(sedeId, id);
     if (f.estadoDocumento === '102') throw new BadRequestException('El comprobante ya fue aceptado por SUNAT; no se reemite.');
+
+    // Recalcula el valor referencial desde las tablas del DS (si hay insumos) y lo
+    // persiste, para que la detracción se calcule sobre el mayor entre total y VR.
+    const vr = this.valorReferencialDe(f);
+    if (vr !== (f.valorReferencial || 0)) {
+      f.valorReferencial = vr;
+      await this.prisma.factura.update({ where: { id }, data: { valorReferencial: vr } });
+    }
 
     // Validación local COMPLETA antes de reservar correlativo y enviar: evita rechazos de
     // SUNAT (y gastar numeración) por datos faltantes.

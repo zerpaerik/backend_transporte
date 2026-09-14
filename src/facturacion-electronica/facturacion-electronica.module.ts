@@ -1,4 +1,4 @@
-import { Module, Injectable, Controller, Get, Patch, Body, BadRequestException } from '@nestjs/common';
+import { Module, Injectable, Controller, Get, Post, Patch, Body, BadRequestException } from '@nestjs/common';
 import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { Roles, CurrentUser, JwtUser } from '../common/decorators';
@@ -8,6 +8,7 @@ import { CorrelativosService } from './correlativos.service';
 import { MifactMapper } from './mifact.mapper';
 import { GreClient } from './gre.client';
 import { GreMapper } from './gre.mapper';
+import { ValorReferencialService } from './valor-referencial.service';
 
 class UpdateEmisorDto {
   @IsString() @IsOptional() ruc?: string;
@@ -108,9 +109,29 @@ class EmisorController {
   @Patch('correlativo') setCorrelativo(@CurrentUser() u: JwtUser, @Body() dto: SetCorrelativoDto) { return this.service.setCorrelativo(u.sedeId, dto.tipoDoc, dto.desde); }
 }
 
+// --- Valor referencial de la detracción (tablas del DS 022-2025-MTC) ---
+class ValorRefDto {
+  @IsIn(['local', 'nacional']) ambito: string;
+  @IsNumber() @Min(0) @IsOptional() pesoTM?: number; // toneladas transportadas
+  // nacional
+  @IsString() @IsOptional() ruta?: string;
+  @IsString() @IsOptional() destino?: string;
+  // local (puerto)
+  @IsString() @IsOptional() puerto?: string;
+  @IsString() @IsOptional() zona?: string;
+  @IsString() @IsOptional() tipoCarga?: string;
+}
+
+@Controller('facturacion/tarifas')
+class TarifasController {
+  constructor(private readonly vr: ValorReferencialService) {}
+  @Get('meta') meta() { return this.vr.meta(); }
+  @Post('valor-referencial') calcular(@Body() dto: ValorRefDto) { return this.vr.calcular(dto as any); }
+}
+
 @Module({
-  controllers: [EmisorController],
-  providers: [EmisorService, MifactConfigService, MifactClient, CorrelativosService, MifactMapper, GreClient, GreMapper],
-  exports: [MifactConfigService, MifactClient, CorrelativosService, MifactMapper, GreClient, GreMapper],
+  controllers: [EmisorController, TarifasController],
+  providers: [EmisorService, MifactConfigService, MifactClient, CorrelativosService, MifactMapper, GreClient, GreMapper, ValorReferencialService],
+  exports: [MifactConfigService, MifactClient, CorrelativosService, MifactMapper, GreClient, GreMapper, ValorReferencialService],
 })
 export class FacturacionElectronicaModule {}

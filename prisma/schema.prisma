@@ -499,6 +499,14 @@ model Factura {
   codDetraccion     String    @default("") // 027 transporte de carga
   ctaDetraccion     String    @default("")
   valorReferencial  Float     @default(0) // valor referencial del transporte (base alterna de la detracción)
+  // Insumos para calcular el valor referencial desde las tablas del DS 022-2025-MTC
+  vrAmbito          String    @default("") // "" | local | nacional
+  vrRuta            String    @default("") // ámbito nacional: ruta del DS
+  vrDestino         String    @default("") // ámbito nacional: destino del DS
+  vrPuerto          String    @default("") // ámbito local: puerto
+  vrZona            String    @default("") // ámbito local: zona
+  vrTipoCarga       String    @default("") // contenedorLleno | contenedorVacio | cargaGeneral | granelAlimentos | granelMinerales
+  pesoTM            Float     @default(0) // peso transportado en toneladas
   referenciaVR      String    @default("") // referencia / N° de orden de compra
   guia              String    @default("") // guía de remisión referenciada (SERIE-CORRELATIVO)
   ubigeoOrigen      String    @default("") // COD_UBI_PRTD (bloque transporte)

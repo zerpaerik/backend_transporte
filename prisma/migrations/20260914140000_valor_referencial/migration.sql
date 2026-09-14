@@ -1,0 +1,9 @@
+-- Insumos para calcular el valor referencial de la detracción (DS 022-2025-MTC)
+ALTER TABLE "facturas"
+  ADD COLUMN "vrAmbito" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "vrRuta" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "vrDestino" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "vrPuerto" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "vrZona" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "vrTipoCarga" TEXT NOT NULL DEFAULT '',
+  ADD COLUMN "pesoTM" DOUBLE PRECISION NOT NULL DEFAULT 0;
