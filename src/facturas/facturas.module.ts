@@ -227,7 +227,16 @@ class EmisionService {
     if (!emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
     if (!this.mifactCfg.integracionConfigurada) throw new BadRequestException(`Falta configurar MiFact para el ambiente "${this.mifactCfg.ambiente}".`);
     const f = await this.cargar(sedeId, id);
-    if (f.estadoDocumento === '102') throw new BadRequestException('El comprobante ya fue aceptado por SUNAT; no se reemite.');
+    // Estados terminales: no se reemite (MiFact ya lo tiene). Solo se puede (re)emitir
+    // un comprobante Sin emitir ('') o Rechazado ('104', tras corregirlo).
+    const ESTADO_TERMINAL: Record<string, string> = {
+      '101': 'El comprobante está en proceso en SUNAT; espera su resultado (usa "Estado").',
+      '102': 'El comprobante ya fue aceptado por SUNAT; no se reemite.',
+      '103': 'El comprobante ya fue aceptado (con observación) por SUNAT; no se reemite.',
+      '105': 'El comprobante fue anulado; no se puede volver a emitir.',
+      '108': 'El comprobante tiene una solicitud de baja; no se puede volver a emitir.',
+    };
+    if (ESTADO_TERMINAL[f.estadoDocumento || '']) throw new BadRequestException(ESTADO_TERMINAL[f.estadoDocumento || '']);
 
     // Recalcula el valor referencial desde las tablas del DS (si hay insumos) y lo
     // persiste, para que la detracción se calcule sobre el mayor entre total y VR.
