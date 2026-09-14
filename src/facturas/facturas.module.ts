@@ -158,6 +158,41 @@ class EmisionService {
     return 'Emitida';
   }
 
+  // Revisa TODAS las causas comunes de rechazo de SUNAT antes de enviar, para no
+  // gastar numeración ni recibir el 104. Junta todos los problemas en un solo mensaje.
+  private preflight(f: any, emisor: any) {
+    const e: string[] = [];
+    const t = (v: any) => String(v ?? '').trim();
+    const tipoDoc = f.tipoDocCodigo || '01';
+    // Emisor
+    if (!t(emisor.ruc)) e.push('falta el RUC del emisor');
+    if (!t(emisor.razonSocial)) e.push('falta la razón social del emisor');
+    if (!t(emisor.ubigeo)) e.push('falta el ubigeo del emisor');
+    if (!t(emisor.direccionFiscal)) e.push('falta la dirección fiscal del emisor');
+    // Cliente / receptor
+    if (!t(f.cliente)) e.push('falta el cliente');
+    const rucRecep = f.ruc && f.ruc !== '-' ? t(f.ruc) : '';
+    if (tipoDoc === '01' && rucRecep.length !== 11) e.push('la factura requiere un RUC de cliente válido de 11 dígitos');
+    // Líneas / montos
+    const items = (f.items || []) as any[];
+    const base = items.length ? items.reduce((s, it) => s + (it.valorUnitario || 0) * (it.cantidad || 1), 0) : f.monto || 0;
+    if (base <= 0) e.push('el comprobante no tiene monto (cada línea debe tener un valor unitario mayor a 0)');
+    if (items.some((it) => (it.valorUnitario || 0) <= 0)) e.push('hay líneas con valor unitario en 0 (SUNAT no acepta precios en cero)');
+    if (items.some((it) => !t(it.descripcion))) e.push('hay líneas sin descripción');
+    // Detracción (transporte)
+    const total = Math.round(base * 1.18 * 100) / 100;
+    const sujetoDetr = (tipoDoc === '01' || tipoDoc === '03') && total > (emisor.umbralDetraccion ?? 700);
+    if (sujetoDetr) {
+      if (!t(emisor.ctaDetraccion)) e.push('el comprobante supera el umbral de detracción pero falta la CUENTA DE DETRACCIÓN (Banco de la Nación) en Datos del emisor');
+      if (!t(f.ubigeoOrigen) || !t(f.ubigeoDestino)) e.push('la detracción de transporte requiere el ubigeo de origen y de destino');
+    }
+    // Nota de crédito / débito
+    if ((tipoDoc === '07' || tipoDoc === '08') && !(t(f.docRefSerie) && t(f.docRefCorrelativo))) {
+      e.push('la nota de crédito/débito requiere el documento de referencia (serie y número)');
+    }
+    if (e.length) throw new BadRequestException('No se puede emitir: ' + e.join(' · ') + '.');
+  }
+
   async emitir(sedeId: string, id: string) {
     const emisor = await this.emisor(sedeId);
     if (!emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
@@ -165,13 +200,9 @@ class EmisionService {
     const f = await this.cargar(sedeId, id);
     if (f.estadoDocumento === '102') throw new BadRequestException('El comprobante ya fue aceptado por SUNAT; no se reemite.');
 
-    // SUNAT rechaza precios unitarios en cero. Se valida ANTES de enviar (y de gastar correlativo).
-    const itemsF = (f.items || []) as any[];
-    const baseTot = itemsF.length ? itemsF.reduce((s, it) => s + (it.valorUnitario || 0) * (it.cantidad || 1), 0) : (f.monto || 0);
-    if (baseTot <= 0) throw new BadRequestException('El comprobante no tiene monto: cada línea debe tener un valor unitario mayor a 0.');
-    if (itemsF.length && itemsF.some((it) => (it.valorUnitario || 0) <= 0)) {
-      throw new BadRequestException('Hay líneas con valor unitario en 0. SUNAT no acepta precios en cero; corrige la tarifa/valor de la línea antes de emitir.');
-    }
+    // Validación local COMPLETA antes de reservar correlativo y enviar: evita rechazos de
+    // SUNAT (y gastar numeración) por datos faltantes.
+    this.preflight(f, emisor);
 
     const tipoDoc = f.tipoDocCodigo || '01';
     // Serie válida ya asignada (empieza por letra) o la de la config.

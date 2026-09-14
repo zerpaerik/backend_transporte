@@ -89,8 +89,10 @@ class EmisorService {
     if (!config) throw new BadRequestException('Configura primero los datos del emisor.');
     const serie = this.seriePorTipo(config, tipoDoc);
     const actual = Number(await this.correlativos.peek(sedeId, tipoDoc, serie));
-    if (desde < actual) {
-      throw new BadRequestException(`No se puede fijar en ${desde}: la serie ${serie} ya va por ${actual}. El correlativo solo puede avanzar, no retroceder.`);
+    // En producción el correlativo solo puede avanzar (no repetir números ya emitidos).
+    // En demo se permite bajarlo para poder resetear la numeración de las pruebas.
+    if (desde < actual && this.mifact.esProd) {
+      throw new BadRequestException(`No se puede fijar en ${desde}: la serie ${serie} ya va por ${actual}. En producción el correlativo solo puede avanzar.`);
     }
     await this.correlativos.fijarInicio(sedeId, tipoDoc, serie, desde);
     return this.get(sedeId);
