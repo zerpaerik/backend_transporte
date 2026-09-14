@@ -165,6 +165,14 @@ class EmisionService {
     const f = await this.cargar(sedeId, id);
     if (f.estadoDocumento === '102') throw new BadRequestException('El comprobante ya fue aceptado por SUNAT; no se reemite.');
 
+    // SUNAT rechaza precios unitarios en cero. Se valida ANTES de enviar (y de gastar correlativo).
+    const itemsF = (f.items || []) as any[];
+    const baseTot = itemsF.length ? itemsF.reduce((s, it) => s + (it.valorUnitario || 0) * (it.cantidad || 1), 0) : (f.monto || 0);
+    if (baseTot <= 0) throw new BadRequestException('El comprobante no tiene monto: cada línea debe tener un valor unitario mayor a 0.');
+    if (itemsF.length && itemsF.some((it) => (it.valorUnitario || 0) <= 0)) {
+      throw new BadRequestException('Hay líneas con valor unitario en 0. SUNAT no acepta precios en cero; corrige la tarifa/valor de la línea antes de emitir.');
+    }
+
     const tipoDoc = f.tipoDocCodigo || '01';
     // Serie válida ya asignada (empieza por letra) o la de la config.
     const serie = f.correlativo && /^[A-Za-z]/.test(f.serie || '') ? f.serie : this.serieDe(emisor, tipoDoc);
