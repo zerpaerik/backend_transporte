@@ -48,6 +48,7 @@ export interface FacturaMap {
   fechaVencimiento?: string | null;
   codTipNc?: string;
   motivo?: string;
+  referencia?: string; // referencia / N° de orden de compra (observación)
   docRefTipo?: string;
   docRefSerie?: string;
   docRefCorrelativo?: string;
@@ -177,6 +178,17 @@ export class MifactMapper {
         },
       ];
     }
+
+    // Observaciones / leyendas que deben SALIR en el comprobante (SUNAT datos adicionales).
+    const adic: Record<string, string>[] = [];
+    if ((f.formaPago || 'Contado') === 'Credito' && f.fechaVencimiento) {
+      const dias = Math.max(0, Math.round((new Date(f.fechaVencimiento).getTime() - new Date(f.fecha).getTime()) / 86_400_000));
+      adic.push({ COD_TIP_ADIC_SUNAT: '01', TXT_DESC_ADIC_SUNAT: `CREDITO ${dias} DIAS - 01 CUOTA` });
+    }
+    if (f.referencia && f.referencia.trim()) {
+      adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: `REFERENCIA: ${f.referencia.trim()}` });
+    }
+    if (adic.length) p.datos_adicionales = adic;
 
     return { payload: p, calc: { gravado, igv, total, sujetoDetraccion, montoDetraccion } };
   }
