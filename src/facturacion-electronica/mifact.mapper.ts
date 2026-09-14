@@ -21,6 +21,7 @@ export interface EmisorMap {
   codDetraccion?: string;
   umbralDetraccion?: number;
   correoEnvio?: string;
+  formatoImpresion?: string; // COD_FORM_IMPR: formato del PDF en MiFact (p. ej. 001, o el personalizado)
 }
 export interface ItemMap {
   descripcion: string;
@@ -133,7 +134,7 @@ export class MifactMapper {
       RETORNA_XML_ENVIO: 'true',
       RETORNA_XML_CDR: 'true',
       RETORNA_PDF: 'true',
-      COD_FORM_IMPR: '001',
+      COD_FORM_IMPR: e.formatoImpresion || '001',
       TXT_VERS_UBL: '2.1',
       TXT_VERS_ESTRUCT_UBL: '2.0',
       COD_TIP_OPE_SUNAT: sujetoDetraccion ? '1004' : '0101',
@@ -142,8 +143,11 @@ export class MifactMapper {
 
     if ((f.moneda || 'PEN') !== 'PEN' && f.tipoCambio) p.TIP_CAMBIO = String(f.tipoCambio);
     if (e.correoEnvio) p.TXT_CORREO_ENVIO = e.correoEnvio;
-    // Crédito: se informa la fecha de vencimiento (las cuotas formales quedan como ajuste posterior).
-    if ((f.formaPago || 'Contado') === 'Credito' && f.fechaVencimiento) p.FEC_VENCIMIENTO = f.fechaVencimiento;
+    // Crédito: fecha de vencimiento + 1 cuota por el total (representación UBL que espera MiFact).
+    if ((f.formaPago || 'Contado') === 'Credito' && f.fechaVencimiento) {
+      p.FEC_VENCIMIENTO = f.fechaVencimiento;
+      p.cuotas = [{ NRO_CUOTA: '1', FECHA_CUOTA: f.fechaVencimiento, MONTO_CUOTA: money(total) }];
+    }
 
     if (sujetoDetraccion) {
       p.MNT_TOT_DETRACCION = money(montoDetraccion);
@@ -215,7 +219,7 @@ export class MifactMapper {
     return this.clave(f, e);
   }
   getInvoice(f: FacturaMap, e: EmisorMap, opts: { pdf?: boolean; cdr?: boolean } = {}) {
-    return { ...this.clave(f, e), RETORNA_PDF: opts.pdf ? 'true' : 'false', RETORNA_XML_CDR: opts.cdr ? 'true' : 'false', COD_FORM_IMPR: '001' };
+    return { ...this.clave(f, e), RETORNA_PDF: opts.pdf ? 'true' : 'false', RETORNA_XML_CDR: opts.cdr ? 'true' : 'false', COD_FORM_IMPR: e.formatoImpresion || '001' };
   }
   lowInvoice(f: FacturaMap, e: EmisorMap, motivo: string) {
     return { COD_TIP_NIF_EMIS: '6', ...this.clave(f, e), TXT_DESC_MTVO: motivo || 'ANULACION', COD_PTO_VENTA: e.puntoVenta || 'SISTEMA' };

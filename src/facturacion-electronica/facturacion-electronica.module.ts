@@ -27,6 +27,7 @@ class UpdateEmisorDto {
   @IsNumber() @Min(0) @IsOptional() porcDetraccion?: number;
   @IsString() @IsOptional() codDetraccion?: string;
   @IsNumber() @Min(0) @IsOptional() umbralDetraccion?: number;
+  @IsString() @IsOptional() formatoImpresion?: string;
   @IsString() @IsOptional() correoEnvio?: string;
   @IsBoolean() @IsOptional() activo?: boolean;
 }
