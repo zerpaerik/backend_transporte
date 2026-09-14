@@ -48,7 +48,8 @@ export interface FacturaMap {
   fechaVencimiento?: string | null;
   codTipNc?: string;
   motivo?: string;
-  referencia?: string; // referencia / N° de orden de compra (observación)
+  referencia?: string; // referencia / N° de orden de compra
+  guia?: string; // guía de remisión referenciada (SERIE-CORRELATIVO)
   docRefTipo?: string;
   docRefSerie?: string;
   docRefCorrelativo?: string;
@@ -185,10 +186,17 @@ export class MifactMapper {
       const dias = Math.max(0, Math.round((new Date(f.fechaVencimiento).getTime() - new Date(f.fecha).getTime()) / 86_400_000));
       adic.push({ COD_TIP_ADIC_SUNAT: '01', TXT_DESC_ADIC_SUNAT: `CREDITO ${dias} DIAS - 01 CUOTA` });
     }
-    if (f.referencia && f.referencia.trim()) {
-      adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: `REFERENCIA: ${f.referencia.trim()}` });
-    }
     if (adic.length) p.datos_adicionales = adic;
+    // Orden de compra / pedido → columna dedicada del comprobante.
+    if (f.referencia && f.referencia.trim()) {
+      p.otro_docs_referenciado = [{ COD_TIP_OTR_DOC_REF: '99', NUM_OTR_DOC_REF: f.referencia.trim() }];
+    }
+    // Guía de remisión referenciada → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
+    if (f.guia && f.guia.trim()) {
+      const [s, ...rest] = f.guia.trim().split('-');
+      const c = rest.join('').replace(/\D/g, '');
+      if (s && c) p.guias = [{ COD_TIP_DOC_REF: '09', NUM_SERIE_CPE_REF: s.trim(), NUM_CORRE_CPE_REF: c.padStart(8, '0') }];
+    }
 
     return { payload: p, calc: { gravado, igv, total, sujetoDetraccion, montoDetraccion } };
   }

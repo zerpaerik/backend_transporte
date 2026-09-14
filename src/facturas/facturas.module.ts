@@ -37,6 +37,7 @@ class CreateFacturaDto {
   @IsString() @IsOptional() moneda?: string;
   @IsNumber() @IsOptional() valorReferencial?: number;
   @IsString() @IsOptional() referenciaVR?: string;
+  @IsString() @IsOptional() guia?: string;
   @IsString() @IsOptional() ubigeoOrigen?: string;
   @IsString() @IsOptional() ubigeoDestino?: string;
   @IsString() @IsOptional() detalleViaje?: string;
@@ -148,7 +149,7 @@ class EmisionService {
       items: this.itemsMapper(f),
       valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, detalleViaje: f.detalleViaje,
       formaPago: f.formaPago, fechaVencimiento: f.fechaVencimiento ? this.fechaISO(f.fechaVencimiento) : null,
-      referencia: f.referenciaVR,
+      referencia: f.referenciaVR, guia: f.guia,
       docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, motivo: f.motivo,
     };
   }
