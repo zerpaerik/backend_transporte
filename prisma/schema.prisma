@@ -531,6 +531,7 @@ model Factura {
   docRefTipo        String    @default("")
   docRefSerie       String    @default("")
   docRefCorrelativo String    @default("")
+  codTipNc          String    @default("") // código de motivo de la nota de crédito/débito (catálogo 09/10 SUNAT)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -56,6 +56,7 @@ class CreateFacturaDto {
   @IsString() @IsOptional() docRefTipo?: string;
   @IsString() @IsOptional() docRefSerie?: string;
   @IsString() @IsOptional() docRefCorrelativo?: string;
+  @IsString() @IsOptional() codTipNc?: string;
   @IsString() @IsOptional() motivo?: string;
 }
 class UpdateFacturaDto extends PartialType(CreateFacturaDto) {}
@@ -178,7 +179,7 @@ class EmisionService {
       valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, detalleViaje: f.detalleViaje,
       formaPago: f.formaPago, fechaVencimiento: f.fechaVencimiento ? this.fechaISO(f.fechaVencimiento) : null,
       referencia: f.referenciaVR, guia: f.guia,
-      docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, motivo: f.motivo,
+      docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, codTipNc: f.codTipNc, motivo: f.motivo,
     };
   }
   private estadoSunatDe(estadoDoc: string): string {
