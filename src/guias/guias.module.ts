@@ -147,6 +147,11 @@ class GuiasService {
     return this.prisma.guiaTransportista.findMany({ where: { sedeId, viajeId }, orderBy: { createdAt: 'desc' } });
   }
 
+  // Todas las guías de la sede (para la pantalla de gestión de GRE).
+  async listarTodas(sedeId: string) {
+    return this.prisma.guiaTransportista.findMany({ where: { sedeId }, orderBy: { createdAt: 'desc' } });
+  }
+
   private async cargar(sedeId: string, id: string) {
     const g = await this.prisma.guiaTransportista.findFirst({ where: { id, sedeId } });
     if (!g) throw new NotFoundException('Guía no encontrada');
@@ -185,6 +190,7 @@ class GuiasService {
 @Controller('gre')
 class GuiasController {
   constructor(private readonly service: GuiasService) {}
+  @Get() listarTodas(@CurrentUser() u: JwtUser) { return this.service.listarTodas(u.sedeId); }
   @Get('viaje/:viajeId') listar(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string) { return this.service.listar(u.sedeId, viajeId); }
   @Post('viaje/:viajeId/preview') preview(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string, @Body() dto: GuiaInputDto) { return this.service.preview(u.sedeId, viajeId, dto); }
   @Post('viaje/:viajeId/emitir') emitir(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string, @Body() dto: GuiaInputDto) { return this.service.emitir(u.sedeId, viajeId, dto); }
