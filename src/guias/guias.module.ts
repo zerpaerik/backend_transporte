@@ -21,9 +21,21 @@ class GuiaInputDto {
   @IsString() @IsOptional() partidaUbigeo?: string;
   @IsString() @IsOptional() llegadaDir?: string;
   @IsString() @IsOptional() llegadaUbigeo?: string;
+  // Remitente (por defecto el cliente del viaje, pero editable)
+  @IsString() @IsOptional() remitenteRuc?: string;
+  @IsString() @IsOptional() remitenteRazon?: string;
   @IsString() @IsOptional() destinatarioRuc?: string;
   @IsString() @IsOptional() destinatarioRazon?: string;
+  // Conductor y vehículos (precargados del viaje, editables para corregir DNI/licencia/TUC)
+  @IsString() @IsOptional() conductorNombre?: string;
+  @IsString() @IsOptional() conductorDni?: string;
+  @IsString() @IsOptional() conductorLicencia?: string;
+  @IsString() @IsOptional() placaTracto?: string;
+  @IsString() @IsOptional() tucTracto?: string;
+  @IsString() @IsOptional() placaCarreta?: string;
+  @IsString() @IsOptional() tucCarreta?: string;
   @IsNumber() @Min(0) @IsOptional() pesoBruto?: number;
+  @IsString() @IsOptional() unidad?: string;
   @IsString() @IsOptional() docRefTipo?: string;
   @IsString() @IsOptional() docRefNumero?: string;
   @IsIn(['remitente', 'tercero', 'subcontratado']) @IsOptional() pagadorFlete?: string;
@@ -68,29 +80,65 @@ class GuiasService {
   private armarInput(c: any, dto: GuiaInputDto, serie: string, correlativo: string): GreInput {
     const { viaje, conductor, tracto, carreta } = c;
     const hoy = new Date().toISOString().slice(0, 10);
+    // Cada campo: lo que envía el formulario (dto) manda; si no vino, se usa el dato del viaje/BD.
+    const pick = (v: any, def: any) => (v !== undefined && v !== null && String(v).trim() !== '' ? v : def);
     return {
       serie, correlativo,
       fechaEmision: hoy,
       fechaTraslado: dto.fechaTraslado || (viaje.fechaViaje ? this.fechaISO(viaje.fechaViaje) : hoy),
-      partidaDir: dto.partidaDir || viaje.origen || '',
+      partidaDir: pick(dto.partidaDir, viaje.origen || ''),
       partidaUbigeo: dto.partidaUbigeo || '',
-      llegadaDir: dto.llegadaDir || viaje.destino || '',
+      llegadaDir: pick(dto.llegadaDir, viaje.destino || ''),
       llegadaUbigeo: dto.llegadaUbigeo || '',
-      remitente: { ruc: viaje.clienteRuc || '', razonSocial: viaje.cliente || '' },
+      remitente: { ruc: pick(dto.remitenteRuc, viaje.clienteRuc || ''), razonSocial: pick(dto.remitenteRazon, viaje.cliente || '') },
       destinatario: dto.destinatarioRuc || dto.destinatarioRazon ? { ruc: dto.destinatarioRuc, razonSocial: dto.destinatarioRazon } : undefined,
-      conductor: { nombre: viaje.conductor || conductor?.nombre || '', dni: conductor?.dni || '', licencia: conductor?.licencia || '' },
-      placaTracto: viaje.placaTracto || '',
-      tucTracto: tracto?.constanciaTuc || '',
-      placaCarreta: viaje.carreta || '',
-      tucCarreta: carreta?.constanciaTuc || '',
+      conductor: {
+        nombre: pick(dto.conductorNombre, viaje.conductor || conductor?.nombre || ''),
+        dni: pick(dto.conductorDni, conductor?.dni || ''),
+        licencia: pick(dto.conductorLicencia, conductor?.licencia || ''),
+      },
+      placaTracto: pick(dto.placaTracto, viaje.placaTracto || ''),
+      tucTracto: pick(dto.tucTracto, tracto?.constanciaTuc || ''),
+      placaCarreta: pick(dto.placaCarreta, viaje.carreta || ''),
+      tucCarreta: pick(dto.tucCarreta, carreta?.constanciaTuc || ''),
       pesoBruto: dto.pesoBruto,
-      unidad: 'KGM',
+      unidad: dto.unidad || 'KGM',
       items: (dto.items || []).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad, peso: i.peso, unidad: i.unidad })),
       docRefTipo: dto.docRefTipo || '09',
       docRefNumero: dto.docRefNumero || viaje.factura || '',
       pagadorFlete: (dto.pagadorFlete as any) || 'remitente',
       tercero: dto.terceroRuc || dto.terceroRazon ? { ruc: dto.terceroRuc, razonSocial: dto.terceroRazon } : undefined,
       observaciones: dto.observaciones,
+    };
+  }
+
+  // Datos precargados del viaje para el formulario de GRE (todo editable en la UI).
+  async datos(sedeId: string, viajeId: string) {
+    const c = await this.ctx(sedeId, viajeId);
+    const { viaje, conductor, tracto, carreta, emisor } = c;
+    const serie = emisor.serieGuiaTransportista || 'V001';
+    const hoy = new Date().toISOString().slice(0, 10);
+    return {
+      viajeId,
+      codigo: (viaje as any).codigo || '',
+      ambiente: this.cfg.ambiente,
+      esProd: this.cfg.esProd,
+      greConfigurada: this.cfg.greConfigurada,
+      serie,
+      correlativo: await this.correlativos.peek(sedeId, TIPO_GUR, serie),
+      fechaTraslado: viaje.fechaViaje ? this.fechaISO(viaje.fechaViaje) : hoy,
+      partidaDir: viaje.origen || '',
+      llegadaDir: viaje.destino || '',
+      remitenteRuc: (viaje as any).clienteRuc || '',
+      remitenteRazon: viaje.cliente || '',
+      conductorNombre: viaje.conductor || conductor?.nombre || '',
+      conductorDni: conductor?.dni || '',
+      conductorLicencia: conductor?.licencia || '',
+      placaTracto: viaje.placaTracto || '',
+      tucTracto: tracto?.constanciaTuc || '',
+      placaCarreta: viaje.carreta || '',
+      tucCarreta: carreta?.constanciaTuc || '',
+      docRefNumero: (viaje as any).factura || '',
     };
   }
 
@@ -192,6 +240,7 @@ class GuiasController {
   constructor(private readonly service: GuiasService) {}
   @Get() listarTodas(@CurrentUser() u: JwtUser) { return this.service.listarTodas(u.sedeId); }
   @Get('viaje/:viajeId') listar(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string) { return this.service.listar(u.sedeId, viajeId); }
+  @Get('viaje/:viajeId/datos') datos(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string) { return this.service.datos(u.sedeId, viajeId); }
   @Post('viaje/:viajeId/preview') preview(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string, @Body() dto: GuiaInputDto) { return this.service.preview(u.sedeId, viajeId, dto); }
   @Post('viaje/:viajeId/emitir') emitir(@CurrentUser() u: JwtUser, @Param('viajeId') viajeId: string, @Body() dto: GuiaInputDto) { return this.service.emitir(u.sedeId, viajeId, dto); }
   @Post(':id/estado') estado(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.estado(u.sedeId, id); }
