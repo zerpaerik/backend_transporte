@@ -169,16 +169,51 @@ class GuiasService {
     };
   }
 
+  // Revisa las causas comunes de rechazo de SUNAT ANTES de reservar número y enviar.
+  private preflightGre(input: GreInput) {
+    const e: string[] = [];
+    const t = (v: any) => String(v ?? '').trim();
+    const ubigeoOk = (v: string) => /^\d{6}$/.test(v);
+    // Vehículo
+    if (!t(input.placaTracto)) e.push('falta la placa del tracto');
+    if (!t(input.tucTracto)) e.push('falta la TUC / constancia de inscripción del tracto (obligatoria para SUNAT)');
+    // Conductor
+    if (!t(input.conductor.nombre)) e.push('falta el nombre del conductor');
+    if (t(input.conductor.dni).length !== 8) e.push('el DNI del conductor debe tener 8 dígitos');
+    if (!t(input.conductor.licencia)) e.push('falta la licencia del conductor');
+    // Ruta
+    if (!ubigeoOk(t(input.partidaUbigeo))) e.push('el ubigeo de partida debe tener 6 dígitos');
+    if (!ubigeoOk(t(input.llegadaUbigeo))) e.push('el ubigeo de llegada debe tener 6 dígitos');
+    // Remitente
+    if (t(input.remitente.ruc).length !== 11) e.push('el RUC del remitente debe tener 11 dígitos');
+    // Documento de referencia (GRR/factura): formato SERIE-CORRELATIVO
+    const ref = t(input.docRefNumero);
+    if (!ref) e.push('falta el N° del documento de referencia (guía del remitente o factura)');
+    else if (!/^[A-Za-z0-9]{1,4}-\d{1,8}$/.test(ref)) e.push(`el N° del documento de referencia "${ref}" no cumple el formato SUNAT (debe ser SERIE-CORRELATIVO, p. ej. T001-00001234)`);
+    if (e.length) throw new BadRequestException('No se puede emitir la guía: ' + e.join(' · ') + '.');
+  }
+
   async emitir(sedeId: string, viajeId: string, dto: GuiaInputDto) {
     const c = await this.ctx(sedeId, viajeId);
     if (!c.emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
     if (!this.cfg.greConfigurada) throw new BadRequestException(`Falta la URL de GRE de MiFact (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
     const serie = c.emisor.serieGuiaTransportista || 'V001';
-    const correlativo = await this.correlativos.reservar(sedeId, TIPO_GUR, serie);
-    const input = this.armarInput(c, dto, serie, correlativo);
-    const payload = this.mapper.sendGuia(input, this.emisorMap(c.emisor));
+    // Validar ANTES de reservar el correlativo (para no gastar numeración en un rechazo).
+    this.preflightGre(this.armarInput(c, dto, serie, '00000000'));
+
+    // Reservar y enviar. Si MiFact responde que el número YA EXISTE (por intentos previos
+    // que llegaron a su BD), se avanza automáticamente al siguiente correlativo y se reintenta.
+    const esDuplicado = (r: any) => /ya existe|already exists|existe en la bd/i.test(String(r?.errors || r?.sunat_description || ''));
+    let input!: GreInput;
+    let resp: any;
+    const MAX_INTENTOS = 10;
+    for (let i = 0; i < MAX_INTENTOS; i++) {
+      const correlativo = await this.correlativos.reservar(sedeId, TIPO_GUR, serie);
+      input = this.armarInput(c, dto, serie, correlativo);
+      resp = await this.gre.sendGuia(this.mapper.sendGuia(input, this.emisorMap(c.emisor)));
+      if (!esDuplicado(resp)) break;
+    }
     const guia = await this.prisma.guiaTransportista.create({ data: this.toData(sedeId, viajeId, input) });
-    const resp = await this.gre.sendGuia(payload);
     const estadoDoc = String(resp.estado_documento || '');
     await this.prisma.guiaTransportista.update({
       where: { id: guia.id },
