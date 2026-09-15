@@ -16,8 +16,9 @@ export class MifactConfigService {
     return this.ambiente === 'prod';
   }
   get baseUrl(): string {
+    // URL base de facturación tomada de variables de entorno (sin default hardcodeado).
     const url = this.esProd ? process.env.MIFACT_BASE_URL_PROD : process.env.MIFACT_BASE_URL_DEMO;
-    return (url || (this.esProd ? '' : 'https://demo.mifact.net.pe/api/invoiceService.svc/')).replace(/\/?$/, '/');
+    return (url || '').replace(/\/?$/, url ? '/' : '');
   }
   get token(): string {
     return (this.esProd ? process.env.MIFACT_TOKEN_MGRSI : process.env.MIFACT_TOKEN_DEMO) || '';
