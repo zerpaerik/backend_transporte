@@ -28,14 +28,11 @@ export class MifactConfigService {
   }
 
   /**
-   * URL del servicio de Guía de Remisión (GuiaRemision.svc).
-   * En DEMO usa la URL pública del repositorio de MiFact si no se define env.
-   * En PRODUCCIÓN MiFact entrega otra URL: debe cargarse en MIFACT_GRE_BASE_URL_PROD.
+   * URL del servicio de Guía de Remisión (GuiaRemision.svc), tomada de variables de
+   * entorno (MIFACT_GRE_BASE_URL_DEMO / _PROD). No se hardcodea ninguna URL.
    */
   get greBaseUrl(): string {
-    const url = this.esProd
-      ? process.env.MIFACT_GRE_BASE_URL_PROD
-      : process.env.MIFACT_GRE_BASE_URL_DEMO || 'https://demo.mifact.net.pe/api/GuiaRemision.svc/';
+    const url = this.esProd ? process.env.MIFACT_GRE_BASE_URL_PROD : process.env.MIFACT_GRE_BASE_URL_DEMO;
     return (url || '').replace(/\/?$/, url ? '/' : '');
   }
   get greConfigurada(): boolean {
