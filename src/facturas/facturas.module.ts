@@ -262,7 +262,9 @@ class EmisionService {
       await this.prisma.factura.update({ where: { id }, data: { serie, correlativo, tipoDocCodigo: tipoDoc } });
     }
 
-    const { payload, calc } = this.mapper.sendInvoice(this.mapFactura(f, serie, correlativo), emisor as any);
+    // Cuentas bancarias activas de la sede → se envían en el comprobante para que el cliente pague.
+    const cuentas = await this.prisma.cuentaBancaria.findMany({ where: { sedeId, activo: true }, orderBy: [{ orden: 'asc' }, { createdAt: 'asc' }] });
+    const { payload, calc } = this.mapper.sendInvoice(this.mapFactura(f, serie, correlativo), { ...(emisor as any), cuentas });
     const resp = await this.client.sendInvoice(payload);
     const estadoDoc = String(resp.estado_documento || '');
 

@@ -22,6 +22,7 @@ export interface EmisorMap {
   umbralDetraccion?: number;
   correoEnvio?: string;
   formatoImpresion?: string; // COD_FORM_IMPR: formato del PDF en MiFact (p. ej. 001, o el personalizado)
+  cuentas?: { banco?: string; moneda?: string; numero?: string; cci?: string }[]; // cuentas bancarias para el pago
 }
 export interface ItemMap {
   descripcion: string;
@@ -189,6 +190,13 @@ export class MifactMapper {
     if ((f.formaPago || 'Contado') === 'Credito' && f.fechaVencimiento) {
       const dias = Math.max(0, Math.round((new Date(f.fechaVencimiento).getTime() - new Date(f.fecha).getTime()) / 86_400_000));
       adic.push({ COD_TIP_ADIC_SUNAT: '01', TXT_DESC_ADIC_SUNAT: `CREDITO ${dias} DIAS - 01 CUOTA` });
+    }
+    // Cuentas bancarias de la sede → como observación, para que el cliente pueda pagar.
+    for (const cta of e.cuentas || []) {
+      const nro = (cta.numero || '').trim();
+      if (!nro) continue;
+      const linea = `${(cta.banco || '').trim()} ${(cta.moneda || '').trim()} - Cta ${nro}${cta.cci && cta.cci.trim() ? ` / CCI ${cta.cci.trim()}` : ''}`.replace(/\s+/g, ' ').trim();
+      adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: linea });
     }
     if (adic.length) p.datos_adicionales = adic;
     // Orden de compra / pedido → columna dedicada del comprobante.
