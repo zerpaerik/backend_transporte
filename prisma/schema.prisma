@@ -574,6 +574,7 @@ model EmisorConfig {
   serieFactura     String   @default("FN01")
   serieBoleta      String   @default("BN01")
   serieNotaCredito String   @default("FN01") // NC referida a factura
+  serieNotaDebito  String   @default("FD01") // ND referida a factura
   serieGuiaTransportista String @default("V001") // serie de la GRE del transportista
   registroMtc      String   @default("") // NRO_REGISTRO_MTC del transportista (GRE)
   puntoVenta       String   @default("") // COD_PTO_VENTA

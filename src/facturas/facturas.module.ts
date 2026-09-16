@@ -11,7 +11,7 @@ import { CorrelativosService } from '../facturacion-electronica/correlativos.ser
 import { MifactMapper, type FacturaMap, type ItemMap } from '../facturacion-electronica/mifact.mapper';
 import { ValorReferencialService } from '../facturacion-electronica/valor-referencial.service';
 
-const TIPO_COD: Record<string, string> = { Factura: '01', Boleta: '03', 'N. Crédito': '07' };
+const TIPO_COD: Record<string, string> = { Factura: '01', Boleta: '03', 'N. Crédito': '07', 'N. Débito': '08' };
 
 class ItemDto {
   @IsString() @IsNotEmpty() descripcion: string;
@@ -23,7 +23,7 @@ class ItemDto {
 
 class CreateFacturaDto {
   @IsString() @IsOptional() serie?: string;
-  @IsIn(['Factura', 'Boleta', 'N. Crédito']) tipo: string;
+  @IsIn(['Factura', 'Boleta', 'N. Crédito', 'N. Débito']) tipo: string;
   @IsString() @IsOptional() tipoDocCodigo?: string;
   @IsString() @IsNotEmpty() cliente: string;
   @IsString() @IsOptional() ruc?: string;
@@ -161,6 +161,7 @@ class EmisionService {
   private serieDe(emisor: any, tipoDoc: string): string {
     if (tipoDoc === '03') return emisor.serieBoleta || 'BN01';
     if (tipoDoc === '07') return emisor.serieNotaCredito || emisor.serieFactura || 'FN01';
+    if (tipoDoc === '08') return emisor.serieNotaDebito || emisor.serieFactura || 'FD01';
     return emisor.serieFactura || 'FN01';
   }
   private fechaISO(d: any): string { return new Date(d).toISOString().slice(0, 10); }
