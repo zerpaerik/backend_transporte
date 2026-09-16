@@ -508,7 +508,8 @@ model Factura {
   vrTipoCarga       String    @default("") // contenedorLleno | contenedorVacio | cargaGeneral | granelAlimentos | granelMinerales
   pesoTM            Float     @default(0) // peso transportado en toneladas
   referenciaVR      String    @default("") // referencia / N° de orden de compra
-  guia              String    @default("") // guía de remisión referenciada (SERIE-CORRELATIVO)
+  guia              String    @default("") // guía de remisión del remitente referenciada (SERIE-CORRELATIVO)
+  guiaTransportista String    @default("") // guía de remisión del transportista referenciada (SERIE-CORRELATIVO)
   ubigeoOrigen      String    @default("") // COD_UBI_PRTD (bloque transporte)
   ubigeoDestino     String    @default("") // COD_UBI_LLGD (bloque transporte)
   detalleViaje      String    @default("") // DETALLE_VIAJE (detracción transporte)

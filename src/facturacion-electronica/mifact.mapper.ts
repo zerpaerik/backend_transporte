@@ -51,7 +51,8 @@ export interface FacturaMap {
   codTipNc?: string;
   motivo?: string;
   referencia?: string; // referencia / N° de orden de compra
-  guia?: string; // guía de remisión referenciada (SERIE-CORRELATIVO)
+  guia?: string; // guía de remisión del remitente referenciada (SERIE-CORRELATIVO)
+  guiaTransportista?: string; // guía de remisión del transportista referenciada (SERIE-CORRELATIVO)
   docRefTipo?: string;
   docRefSerie?: string;
   docRefCorrelativo?: string;
@@ -203,12 +204,16 @@ export class MifactMapper {
     if (f.referencia && f.referencia.trim()) {
       p.otro_docs_referenciado = [{ COD_TIP_OTR_DOC_REF: '99', NUM_OTR_DOC_REF: f.referencia.trim() }];
     }
-    // Guía de remisión referenciada → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
-    if (f.guia && f.guia.trim()) {
-      const [s, ...rest] = f.guia.trim().split('-');
+    // Guías de remisión referenciadas → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
+    // Se referencian tanto la del remitente como la del transportista, si vienen.
+    const guias: Record<string, string>[] = [];
+    for (const g of [f.guia, f.guiaTransportista]) {
+      if (!g || !g.trim()) continue;
+      const [s, ...rest] = g.trim().split('-');
       const c = rest.join('').replace(/\D/g, '');
-      if (s && c) p.guias = [{ COD_TIP_DOC_REF: '09', NUM_SERIE_CPE_REF: s.trim(), NUM_CORRE_CPE_REF: c.padStart(8, '0') }];
+      if (s && c) guias.push({ COD_TIP_DOC_REF: '09', NUM_SERIE_CPE_REF: s.trim(), NUM_CORRE_CPE_REF: c.padStart(8, '0') });
     }
+    if (guias.length) p.guias = guias;
 
     return { payload: p, calc: { gravado, igv, total, sujetoDetraccion, montoDetraccion } };
   }

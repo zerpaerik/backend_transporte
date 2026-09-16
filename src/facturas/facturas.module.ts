@@ -36,6 +36,7 @@ class CreateFacturaDto {
   // Electrónica
   @IsArray() @ValidateNested({ each: true }) @Type(() => ItemDto) @IsOptional() items?: ItemDto[];
   @IsString() @IsOptional() moneda?: string;
+  @IsNumber() @Min(0) @IsOptional() tipoCambio?: number;
   @IsNumber() @IsOptional() valorReferencial?: number;
   // Insumos del valor referencial (tablas DS 022-2025-MTC)
   @IsIn(['', 'local', 'nacional']) @IsOptional() vrAmbito?: string;
@@ -47,6 +48,7 @@ class CreateFacturaDto {
   @IsNumber() @Min(0) @IsOptional() pesoTM?: number;
   @IsString() @IsOptional() referenciaVR?: string;
   @IsString() @IsOptional() guia?: string;
+  @IsString() @IsOptional() guiaTransportista?: string;
   @IsString() @IsOptional() ubigeoOrigen?: string;
   @IsString() @IsOptional() ubigeoDestino?: string;
   @IsString() @IsOptional() detalleViaje?: string;
@@ -178,7 +180,7 @@ class EmisionService {
       items: this.itemsMapper(f),
       valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, detalleViaje: f.detalleViaje,
       formaPago: f.formaPago, fechaVencimiento: f.fechaVencimiento ? this.fechaISO(f.fechaVencimiento) : null,
-      referencia: f.referenciaVR, guia: f.guia,
+      referencia: f.referenciaVR, guia: f.guia, guiaTransportista: f.guiaTransportista,
       docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, codTipNc: f.codTipNc, motivo: f.motivo,
     };
   }
