@@ -589,6 +589,25 @@ model EmisorConfig {
   @@map("emisor_config")
 }
 
+// Cuentas bancarias de la sede que se muestran/envían en los comprobantes para que
+// el cliente pague. La cuenta de detracción va aparte, en EmisorConfig.
+model CuentaBancaria {
+  id        String   @id @default(uuid())
+  sedeId    String
+  banco     String   @default("")
+  moneda    String   @default("Soles") // Soles | Dólares
+  numero    String   @default("")
+  cci       String   @default("")
+  tipo      String   @default("Corriente") // Corriente | Ahorros
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("cuentas_bancarias")
+}
+
 // Correlativo por (sede, tipo de comprobante, serie). El sistema lo controla en
 // transacción para no duplicar ni saltar números.
 model Correlativo {
