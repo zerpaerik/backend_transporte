@@ -257,18 +257,31 @@ class EmisionService {
     const tipoDoc = f.tipoDocCodigo || '01';
     // Serie válida ya asignada (empieza por letra) o la de la config.
     const serie = f.correlativo && /^[A-Za-z]/.test(f.serie || '') ? f.serie : this.serieDe(emisor, tipoDoc);
-    // Reusar correlativo de un intento previo; si no hay, reservar uno nuevo.
-    const correlativo = f.correlativo || (await this.correlativos.reservar(sedeId, tipoDoc, serie));
-    // Persistir la reserva ANTES de enviar: si el envío se corta, el reintento reutiliza
-    // el mismo número (sin saltos) en vez de reservar otro.
+    // Cuentas bancarias activas de la sede → se envían en el comprobante para que el cliente pague.
+    const cuentas = await this.prisma.cuentaBancaria.findMany({ where: { sedeId, activo: true }, orderBy: [{ orden: 'asc' }, { createdAt: 'asc' }] });
+    const emisorConCuentas = { ...(emisor as any), cuentas };
+
+    // Reservar y enviar. Si MiFact responde que el número YA EXISTE en su BD (por un
+    // intento previo que llegó a MiFact, o por chocar con la numeración del ambiente),
+    // se avanza automáticamente al siguiente correlativo y se reintenta —igual que la GRE.
+    const esDuplicado = (r: any) => /ya existe|already exists|existe en la bd/i.test(String(r?.errors || r?.sunat_description || ''));
+    // Reusar el número de un intento previo; si no hay, reservar uno nuevo.
+    let correlativo = f.correlativo || (await this.correlativos.reservar(sedeId, tipoDoc, serie));
+    // Persistir la reserva ANTES de enviar: si el envío se corta, el reintento la reutiliza.
     if (!f.correlativo) {
       await this.prisma.factura.update({ where: { id }, data: { serie, correlativo, tipoDocCodigo: tipoDoc } });
     }
-
-    // Cuentas bancarias activas de la sede → se envían en el comprobante para que el cliente pague.
-    const cuentas = await this.prisma.cuentaBancaria.findMany({ where: { sedeId, activo: true }, orderBy: [{ orden: 'asc' }, { createdAt: 'asc' }] });
-    const { payload, calc } = this.mapper.sendInvoice(this.mapFactura(f, serie, correlativo), { ...(emisor as any), cuentas });
-    const resp = await this.client.sendInvoice(payload);
+    let payload: any;
+    let calc: any;
+    let resp: any;
+    const MAX_INTENTOS = 10;
+    for (let i = 0; i < MAX_INTENTOS; i++) {
+      ({ payload, calc } = this.mapper.sendInvoice(this.mapFactura(f, serie, correlativo), emisorConCuentas));
+      resp = await this.client.sendInvoice(payload);
+      if (!esDuplicado(resp)) break;
+      // Número ocupado en MiFact: reservar el siguiente y reintentar con ese.
+      correlativo = await this.correlativos.reservar(sedeId, tipoDoc, serie);
+    }
     const estadoDoc = String(resp.estado_documento || '');
 
     await this.prisma.factura.update({
