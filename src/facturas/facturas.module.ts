@@ -11,7 +11,7 @@ import { CorrelativosService } from '../facturacion-electronica/correlativos.ser
 import { MifactMapper, type FacturaMap, type ItemMap } from '../facturacion-electronica/mifact.mapper';
 import { ValorReferencialService } from '../facturacion-electronica/valor-referencial.service';
 
-const TIPO_COD: Record<string, string> = { Factura: '01', Boleta: '03', 'N. Crédito': '07' };
+const TIPO_COD: Record<string, string> = { Factura: '01', Boleta: '03', 'N. Crédito': '07', 'N. Débito': '08' };
 
 class ItemDto {
   @IsString() @IsNotEmpty() descripcion: string;
@@ -23,7 +23,7 @@ class ItemDto {
 
 class CreateFacturaDto {
   @IsString() @IsOptional() serie?: string;
-  @IsIn(['Factura', 'Boleta', 'N. Crédito']) tipo: string;
+  @IsIn(['Factura', 'Boleta', 'N. Crédito', 'N. Débito']) tipo: string;
   @IsString() @IsOptional() tipoDocCodigo?: string;
   @IsString() @IsNotEmpty() cliente: string;
   @IsString() @IsOptional() ruc?: string;
@@ -36,6 +36,7 @@ class CreateFacturaDto {
   // Electrónica
   @IsArray() @ValidateNested({ each: true }) @Type(() => ItemDto) @IsOptional() items?: ItemDto[];
   @IsString() @IsOptional() moneda?: string;
+  @IsNumber() @Min(0) @IsOptional() tipoCambio?: number;
   @IsNumber() @IsOptional() valorReferencial?: number;
   // Insumos del valor referencial (tablas DS 022-2025-MTC)
   @IsIn(['', 'local', 'nacional']) @IsOptional() vrAmbito?: string;
@@ -47,6 +48,7 @@ class CreateFacturaDto {
   @IsNumber() @Min(0) @IsOptional() pesoTM?: number;
   @IsString() @IsOptional() referenciaVR?: string;
   @IsString() @IsOptional() guia?: string;
+  @IsString() @IsOptional() guiaTransportista?: string;
   @IsString() @IsOptional() ubigeoOrigen?: string;
   @IsString() @IsOptional() ubigeoDestino?: string;
   @IsString() @IsOptional() detalleViaje?: string;
@@ -159,6 +161,7 @@ class EmisionService {
   private serieDe(emisor: any, tipoDoc: string): string {
     if (tipoDoc === '03') return emisor.serieBoleta || 'BN01';
     if (tipoDoc === '07') return emisor.serieNotaCredito || emisor.serieFactura || 'FN01';
+    if (tipoDoc === '08') return emisor.serieNotaDebito || emisor.serieFactura || 'FD01';
     return emisor.serieFactura || 'FN01';
   }
   private fechaISO(d: any): string { return new Date(d).toISOString().slice(0, 10); }
@@ -178,7 +181,7 @@ class EmisionService {
       items: this.itemsMapper(f),
       valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, detalleViaje: f.detalleViaje,
       formaPago: f.formaPago, fechaVencimiento: f.fechaVencimiento ? this.fechaISO(f.fechaVencimiento) : null,
-      referencia: f.referenciaVR, guia: f.guia,
+      referencia: f.referenciaVR, guia: f.guia, guiaTransportista: f.guiaTransportista,
       docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, codTipNc: f.codTipNc, motivo: f.motivo,
     };
   }
