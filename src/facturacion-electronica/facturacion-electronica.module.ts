@@ -34,7 +34,7 @@ class UpdateEmisorDto {
 }
 
 class SetCorrelativoDto {
-  @IsIn(['01', '03', '07', '31']) tipoDoc: string; // 01 factura · 03 boleta · 07 NC · 31 GRE transportista
+  @IsIn(['01', '03', '07', '08', '31']) tipoDoc: string; // 01 factura · 03 boleta · 07 NC · 08 ND · 31 GRE transportista
   @IsNumber() @Min(1) desde: number; // próximo número a usar
 }
 
@@ -42,6 +42,7 @@ const TIPOS_CPE = [
   { tipoDoc: '01', etiqueta: 'Factura' },
   { tipoDoc: '03', etiqueta: 'Boleta' },
   { tipoDoc: '07', etiqueta: 'Nota de crédito' },
+  { tipoDoc: '08', etiqueta: 'Nota de débito' },
   { tipoDoc: '31', etiqueta: 'GRE transportista' },
 ];
 
@@ -56,6 +57,7 @@ class EmisorService {
   private seriePorTipo(config: any, tipoDoc: string): string {
     if (tipoDoc === '03') return config.serieBoleta || 'BN01';
     if (tipoDoc === '07') return config.serieNotaCredito || config.serieFactura || 'FN01';
+    if (tipoDoc === '08') return config.serieNotaDebito || config.serieFactura || 'FD01';
     if (tipoDoc === '31') return config.serieGuiaTransportista || 'V001';
     return config.serieFactura || 'FN01';
   }
