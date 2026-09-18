@@ -380,9 +380,11 @@ model Viaje {
   // Quién devolvió el contenedor. Si es distinto del conductor del viaje, queda una
   // compensación: el conductor dueño le debe una devolución al que la hizo.
   devueltoPor         String    @default("")
+  devueltoPorEn       DateTime? // cuándo se registró la devolución cruzada (para el seguimiento y el orden)
   compensacionEstado  String    @default("") // "" (no aplica) | Pendiente | Compensada | Pagada
   compensacionMonto   Float     @default(0)  // monto pagado al que hizo la devolución (opcional)
   compensacionNota    String    @default("") // p. ej. "compensada con OP-0123" o detalle del pago
+  compensacionEn      DateTime? // cuándo se saldó (se compensó o se pagó); útil para la planilla
   devolucionArchivada Boolean   @default(false) // se quita del índice de devoluciones (no de operaciones)
   citaArchivos        CitaArchivo[]
   // Adjunto único legado (reemplazado por citaArchivos)
