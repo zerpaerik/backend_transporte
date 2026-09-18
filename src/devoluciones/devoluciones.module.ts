@@ -44,7 +44,8 @@ const DEV_SELECT = {
   id: true, codigo: true, placaTracto: true, carreta: true, conductor: true, cliente: true,
   contenedor: true, tamanio: true, destino: true, devolucion: true, operacion: true, createdAt: true,
   citaFecha: true, citaHora: true, lugarGuardado: true, estadoDevolucion: true, devueltoEn: true,
-  devueltoPor: true, compensacionEstado: true, compensacionMonto: true, compensacionNota: true,
+  devueltoPor: true, devueltoPorEn: true, compensacionEstado: true, compensacionMonto: true,
+  compensacionNota: true, compensacionEn: true,
   citaArchivos: { select: { id: true, nombre: true, mime: true } },
 };
 
@@ -96,14 +97,21 @@ class DevolucionesService {
       // Si devolvió un conductor distinto al del viaje, queda una compensación pendiente
       // (el dueño le debe una devolución al que la hizo). Si lo devolvió el mismo, se limpia.
       if (!esCruce(v.conductor, quien)) {
+        data.devueltoPorEn = null;
         data.compensacionEstado = '';
         data.compensacionMonto = 0;
         data.compensacionNota = '';
+        data.compensacionEn = null;
       } else if (!v.compensacionEstado || quien !== (v.devueltoPor || '').trim()) {
         // Nueva, o corrigieron a quién se le debe: lo saldado antes ya no aplica.
+        data.devueltoPorEn = new Date();
         data.compensacionEstado = 'Pendiente';
         data.compensacionMonto = 0;
         data.compensacionNota = '';
+        data.compensacionEn = null;
+      } else if (!v.devueltoPorEn) {
+        // Cruce de antes de que se guardara la fecha: se fecha ahora y no se vuelve a tocar.
+        data.devueltoPorEn = new Date();
       }
     }
     await this.prisma.viaje.update({ where: { id: viajeId }, data });
@@ -118,12 +126,15 @@ class DevolucionesService {
     if (!esCruce(v.conductor, v.devueltoPor)) {
       throw new BadRequestException('Este contenedor lo devolvió su propio conductor: no hay compensación que registrar.');
     }
+    const saldada = dto.estado === 'Compensada' || dto.estado === 'Pagada';
     await this.prisma.viaje.update({
       where: { id: viajeId },
       data: {
         compensacionEstado: dto.estado,
         compensacionMonto: dto.estado === 'Pagada' ? (dto.monto ?? 0) : 0,
         compensacionNota: dto.nota ?? '',
+        // Fecha del saldo: es la que necesita planilla para saber en qué periodo cae.
+        compensacionEn: saldada ? new Date() : null,
       },
     });
     return this.prisma.viaje.findFirst({ where: { id: viajeId, sedeId }, select: DEV_SELECT });
@@ -135,10 +146,12 @@ class DevolucionesService {
   async compensaciones(sedeId: string) {
     const viajes = await this.prisma.viaje.findMany({
       where: { sedeId, devueltoPor: { not: '' }, estado: { not: 'Cancelado' } },
-      orderBy: { devueltoEn: 'desc' },
+      // La devolución registrada más recientemente va arriba (las sin fecha, al final).
+      orderBy: [{ devueltoPorEn: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       select: {
         id: true, codigo: true, contenedor: true, conductor: true, devueltoPor: true, devueltoEn: true,
-        estadoDevolucion: true, compensacionEstado: true, compensacionMonto: true, compensacionNota: true, cliente: true,
+        devueltoPorEn: true, citaFecha: true, estadoDevolucion: true, compensacionEstado: true,
+        compensacionMonto: true, compensacionNota: true, compensacionEn: true, cliente: true,
       },
     });
     const cruces = viajes.filter((v) => esCruce(v.conductor, v.devueltoPor));
