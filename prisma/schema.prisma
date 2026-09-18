@@ -166,6 +166,7 @@ model Agenda {
   destino     String   @default("") // a dónde va la carga (distrito)
   devolucion  String   @default("") // dónde se devuelve
   tipoCarga   String   @default("GENERAL") // GENERAL | IMO | REEFER
+  tipoCarreta String   @default("") // tipo de carreta requerida (plataforma, portacontenedor, cama baja…)
   unidades    Int      @default(1) // unidades comprometidas
   observacion String   @default("")
   estado      String   @default("Programado") // Programado | Confirmado | Realizado | Cancelado
@@ -376,6 +377,12 @@ model Viaje {
   lugarGuardado       String    @default("")
   estadoDevolucion    String    @default("Pendiente") // Pendiente | En proceso | Devuelto
   devueltoEn          DateTime? // cuándo pasó a "Devuelto" (para archivar a los 15 días)
+  // Quién devolvió el contenedor. Si es distinto del conductor del viaje, queda una
+  // compensación: el conductor dueño le debe una devolución al que la hizo.
+  devueltoPor         String    @default("")
+  compensacionEstado  String    @default("") // "" (no aplica) | Pendiente | Compensada | Pagada
+  compensacionMonto   Float     @default(0)  // monto pagado al que hizo la devolución (opcional)
+  compensacionNota    String    @default("") // p. ej. "compensada con OP-0123" o detalle del pago
   devolucionArchivada Boolean   @default(false) // se quita del índice de devoluciones (no de operaciones)
   citaArchivos        CitaArchivo[]
   // Adjunto único legado (reemplazado por citaArchivos)
@@ -517,6 +524,7 @@ model Factura {
   formaPago         String    @default("Contado") // Contado | Credito
   fechaVencimiento  DateTime? @db.Date
   items             FacturaItem[]
+  serviciosVR       FacturaServicioVR[]
   // Respuesta SUNAT / MiFact
   estadoDocumento   String    @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
   sunatDescripcion  String    @default("")
@@ -557,6 +565,29 @@ model FacturaItem {
 
   @@index([facturaId])
   @@map("factura_items")
+}
+
+// Valor referencial de CADA servicio (viaje) incluido en el comprobante: el valor
+// referencial de la factura es la suma de estos. Se guardan también los insumos del
+// cálculo para poder recalcular cada servicio desde las tablas del DS 022-2025-MTC
+// al momento de emitir, igual que se hace con el valor referencial único.
+model FacturaServicioVR {
+  id        String  @id @default(uuid())
+  factura   Factura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  facturaId String
+  detalle   String  @default("") // cómo se calculó / a qué viaje corresponde
+  valor     Float   @default(0) // S/ del servicio
+  ambito    String  @default("") // "" manual | local | nacional
+  ruta      String  @default("") // ámbito nacional
+  destino   String  @default("") // ámbito nacional
+  puerto    String  @default("") // ámbito local
+  zona      String  @default("") // ámbito local
+  tipoCarga String  @default("") // ámbito local
+  pesoTM    Float   @default(0)
+  orden     Int     @default(0)
+
+  @@index([facturaId])
+  @@map("factura_servicios_vr")
 }
 
 // Datos del emisor por sede (editable desde el portal).
