@@ -21,6 +21,19 @@ class ItemDto {
   @IsString() @IsOptional() unidad?: string;
 }
 
+// Un servicio (viaje) del comprobante con su propio valor referencial.
+class ServicioVRDto {
+  @IsString() @IsOptional() detalle?: string;
+  @IsNumber() @Min(0) valor: number;
+  @IsIn(['', 'local', 'nacional']) @IsOptional() ambito?: string;
+  @IsString() @IsOptional() ruta?: string;
+  @IsString() @IsOptional() destino?: string;
+  @IsString() @IsOptional() puerto?: string;
+  @IsString() @IsOptional() zona?: string;
+  @IsString() @IsOptional() tipoCarga?: string;
+  @IsNumber() @Min(0) @IsOptional() pesoTM?: number;
+}
+
 class CreateFacturaDto {
   @IsString() @IsOptional() serie?: string;
   @IsIn(['Factura', 'Boleta', 'N. Crédito', 'N. Débito']) tipo: string;
@@ -38,6 +51,9 @@ class CreateFacturaDto {
   @IsString() @IsOptional() moneda?: string;
   @IsNumber() @Min(0) @IsOptional() tipoCambio?: number;
   @IsNumber() @IsOptional() valorReferencial?: number;
+  // Desglose del valor referencial por servicio (un viaje = una fila). Si viene,
+  // manda sobre los insumos sueltos de abajo: el total es la suma de los servicios.
+  @IsArray() @ValidateNested({ each: true }) @Type(() => ServicioVRDto) @IsOptional() serviciosVR?: ServicioVRDto[];
   // Insumos del valor referencial (tablas DS 022-2025-MTC)
   @IsIn(['', 'local', 'nacional']) @IsOptional() vrAmbito?: string;
   @IsString() @IsOptional() vrRuta?: string;
@@ -68,7 +84,7 @@ class CorreoDto { @IsString() @IsNotEmpty() correo: string; }
 
 // Campos escalares (sin items) que van directo a la tabla.
 function toData(dto: Partial<CreateFacturaDto>) {
-  const { fecha, fechaVencimiento, monto, igv, items, tipo, tipoDocCodigo, motivo, ...rest } = dto;
+  const { fecha, fechaVencimiento, monto, igv, items, serviciosVR, tipo, tipoDocCodigo, motivo, ...rest } = dto;
   const data: any = { ...rest };
   if (tipo !== undefined) {
     data.tipo = tipo;
@@ -94,24 +110,51 @@ function itemsCreate(items?: ItemDto[]) {
   }));
 }
 
+function serviciosVRCreate(servicios?: ServicioVRDto[]) {
+  return (servicios ?? []).map((s, i) => ({
+    detalle: s.detalle ?? '', valor: s.valor, ambito: s.ambito ?? '',
+    ruta: s.ruta ?? '', destino: s.destino ?? '', puerto: s.puerto ?? '', zona: s.zona ?? '',
+    tipoCarga: s.tipoCarga ?? '', pesoTM: s.pesoTM ?? 0, orden: i,
+  }));
+}
+
+// Lo que se incluye al leer una factura: sus líneas y el desglose del valor referencial.
+const FACTURA_INCLUDE = {
+  items: { orderBy: { orden: 'asc' as const } },
+  serviciosVR: { orderBy: { orden: 'asc' as const } },
+};
+
 @Injectable()
 class FacturasService {
   constructor(private prisma: PrismaService) {}
-  findAll(sedeId: string) { return this.prisma.factura.findMany({ where: { sedeId }, orderBy: { fecha: 'desc' }, include: { items: { orderBy: { orden: 'asc' } } } }); }
+  findAll(sedeId: string) { return this.prisma.factura.findMany({ where: { sedeId }, orderBy: { fecha: 'desc' }, include: FACTURA_INCLUDE }); }
   async findOne(sedeId: string, id: string) {
-    const f = await this.prisma.factura.findFirst({ where: { id, sedeId }, include: { items: { orderBy: { orden: 'asc' } } } });
+    const f = await this.prisma.factura.findFirst({ where: { id, sedeId }, include: FACTURA_INCLUDE });
     if (!f) throw new NotFoundException('Factura no encontrada');
     return f;
   }
   create(sedeId: string, dto: CreateFacturaDto) {
     const data = toData(dto);
-    return this.prisma.factura.create({ data: { ...data, sedeId, serie: dto.serie ?? '', items: { create: itemsCreate(dto.items) } }, include: { items: true } });
+    return this.prisma.factura.create({
+      data: {
+        ...data, sedeId, serie: dto.serie ?? '',
+        items: { create: itemsCreate(dto.items) },
+        serviciosVR: { create: serviciosVRCreate(dto.serviciosVR) },
+      },
+      include: FACTURA_INCLUDE,
+    });
   }
   async update(sedeId: string, id: string, dto: UpdateFacturaDto) {
     await this.findOne(sedeId, id);
     if (dto.items) {
       await this.prisma.facturaItem.deleteMany({ where: { facturaId: id } });
       await this.prisma.facturaItem.createMany({ data: itemsCreate(dto.items).map((it) => ({ ...it, facturaId: id })) });
+    }
+    // El desglose se reemplaza completo cuando viene en el cuerpo (incluso vacío:
+    // así se puede volver a un valor referencial único desde la pantalla de edición).
+    if (dto.serviciosVR) {
+      await this.prisma.facturaServicioVR.deleteMany({ where: { facturaId: id } });
+      await this.prisma.facturaServicioVR.createMany({ data: serviciosVRCreate(dto.serviciosVR).map((s) => ({ ...s, facturaId: id })) });
     }
     await this.prisma.factura.update({ where: { id }, data: toData(dto) });
     return this.findOne(sedeId, id);
@@ -130,26 +173,44 @@ class EmisionService {
     private valorRef: ValorReferencialService,
   ) {}
 
-  // Si la factura tiene los insumos del valor referencial (ámbito + ruta/destino o
-  // puerto/zona/tipo de carga), lo recalcula desde las tablas del DS 022-2025-MTC
-  // (fuente autoritativa) en vez de confiar en el número guardado. Si no, deja el
-  // valorReferencial manual que ya tenga.
-  private valorReferencialDe(f: any): number {
-    if (!f.vrAmbito) return f.valorReferencial || 0;
+  // Valor referencial de UN servicio: si tiene ámbito, se recalcula desde las tablas
+  // del DS 022-2025-MTC (fuente autoritativa); si no, vale el número ingresado a mano.
+  // Si el recálculo falla (ruta/zona que ya no existe en la tabla) se respeta el valor
+  // guardado en vez de dejar el comprobante en cero.
+  private vrDeServicio(s: { ambito?: string; ruta?: string; destino?: string; puerto?: string; zona?: string; tipoCarga?: string; pesoTM?: number; valor: number }): number {
+    if (!s.ambito) return s.valor || 0;
     try {
       const { valorReferencial } = this.valorRef.calcular({
-        ambito: f.vrAmbito, pesoTM: f.pesoTM,
-        ruta: f.vrRuta, destino: f.vrDestino,
-        puerto: f.vrPuerto, zona: f.vrZona, tipoCarga: f.vrTipoCarga,
+        ambito: s.ambito as 'local' | 'nacional', pesoTM: s.pesoTM,
+        ruta: s.ruta, destino: s.destino,
+        puerto: s.puerto, zona: s.zona, tipoCarga: s.tipoCarga as any,
       });
       return valorReferencial;
     } catch {
-      return f.valorReferencial || 0;
+      return s.valor || 0;
     }
   }
 
+  // Valor referencial del comprobante. Si tiene desglose por servicio (una factura
+  // puede juntar varios viajes), es la SUMA del valor referencial de cada uno. Si no,
+  // se recalcula el valor único desde los insumos sueltos, y a falta de insumos se
+  // deja el valorReferencial manual que ya tenga.
+  private valorReferencialDe(f: any): number {
+    const servicios = (f.serviciosVR ?? []) as any[];
+    if (servicios.length) {
+      return Math.round(servicios.reduce((s, x) => s + this.vrDeServicio(x), 0) * 100) / 100;
+    }
+    if (!f.vrAmbito) return f.valorReferencial || 0;
+    return this.vrDeServicio({
+      ambito: f.vrAmbito, pesoTM: f.pesoTM,
+      ruta: f.vrRuta, destino: f.vrDestino,
+      puerto: f.vrPuerto, zona: f.vrZona, tipoCarga: f.vrTipoCarga,
+      valor: f.valorReferencial || 0,
+    });
+  }
+
   private async cargar(sedeId: string, id: string) {
-    const f = await this.prisma.factura.findFirst({ where: { id, sedeId }, include: { items: { orderBy: { orden: 'asc' } } } });
+    const f = await this.prisma.factura.findFirst({ where: { id, sedeId }, include: FACTURA_INCLUDE });
     if (!f) throw new NotFoundException('Factura no encontrada');
     return f;
   }
@@ -218,6 +279,9 @@ class EmisionService {
     if (sujetoDetr) {
       if (!t(emisor.ctaDetraccion)) e.push('el comprobante supera el umbral de detracción pero falta la CUENTA DE DETRACCIÓN (Banco de la Nación) en Datos del emisor');
       if (!t(f.ubigeoOrigen) || !t(f.ubigeoDestino)) e.push('la detracción de transporte requiere el ubigeo de origen y de destino');
+      // Sin valor referencial el transporte va con VALOR_REF en 0: SUNAT lo rechaza y MiFact
+      // (demo) muestra un valor por defecto. Se exige calcularlo/sumarlo por servicio.
+      if (!(Number(f.valorReferencial) > 0)) e.push('la detracción de transporte requiere el VALOR REFERENCIAL (calcúlalo con las tablas del MTC y suma el de cada viaje)');
     }
     // Nota de crédito / débito
     if ((tipoDoc === '07' || tipoDoc === '08') && !(t(f.docRefSerie) && t(f.docRefCorrelativo))) {

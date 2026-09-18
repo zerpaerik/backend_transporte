@@ -11,6 +11,7 @@ class CreateAgendaDto {
   @IsString() @IsOptional() destino?: string;
   @IsString() @IsOptional() devolucion?: string;
   @IsString() @IsOptional() tipoCarga?: string;
+  @IsString() @IsOptional() tipoCarreta?: string;
   @IsInt() @Min(0) @IsOptional() unidades?: number;
   @IsString() @IsOptional() observacion?: string;
   @IsString() @IsOptional() estado?: string;
