@@ -145,7 +145,8 @@ export class MifactMapper {
       items: this.itemsPayload(f.items),
     };
 
-    if ((f.moneda || 'PEN') !== 'PEN' && f.tipoCambio) p.TIP_CAMBIO = String(f.tipoCambio);
+    // Moneda distinta de PEN: MiFact exige el tipo de cambio (hasta 3 decimales) para mostrarlo.
+    if ((f.moneda || 'PEN') !== 'PEN' && f.tipoCambio) p.TIP_CAMBIO = Number(f.tipoCambio).toFixed(3);
     if (e.correoEnvio) p.TXT_CORREO_ENVIO = e.correoEnvio;
     // Crédito: fecha de vencimiento + 1 cuota por el total (representación UBL que espera MiFact).
     if ((f.formaPago || 'Contado') === 'Credito' && f.fechaVencimiento) {
