@@ -45,6 +45,8 @@ export interface FacturaMap {
   valorReferencial?: number;
   ubigeoOrigen?: string;
   ubigeoDestino?: string;
+  origen?: string;
+  destino?: string;
   detalleViaje?: string;
   formaPago?: string; // Contado | Credito
   fechaVencimiento?: string | null;
@@ -161,9 +163,9 @@ export class MifactMapper {
       p.transporte = [
         {
           COD_UBI_PRTD: f.ubigeoOrigen || '',
-          TXT_DMCL_FISC_PRTD: '-',
+          TXT_DMCL_FISC_PRTD: (f.origen || '').trim() || 'SIN DIRECCION',
           COD_UBI_LLGD: f.ubigeoDestino || '',
-          TXT_DMCL_FISC_LLGD: '-',
+          TXT_DMCL_FISC_LLGD: (f.destino || '').trim() || 'SIN DIRECCION',
           DETALLE_VIAJE: f.detalleViaje || 'SERVICIO DE TRANSPORTE DE CARGA',
           VALOR_REF_SERV_TRANSP: vr,
           VALOR_REF_CARGA_EFECT: vr,

@@ -521,6 +521,8 @@ model Factura {
   guiaTransportista String    @default("") // guía de remisión del transportista referenciada (SERIE-CORRELATIVO)
   ubigeoOrigen      String    @default("") // COD_UBI_PRTD (bloque transporte)
   ubigeoDestino     String    @default("") // COD_UBI_LLGD (bloque transporte)
+  origen            String    @default("") // dirección/lugar de partida (TXT_DMCL_FISC_PRTD)
+  destino           String    @default("") // dirección/lugar de llegada (TXT_DMCL_FISC_LLGD)
   detalleViaje      String    @default("") // DETALLE_VIAJE (detracción transporte)
   // Forma de pago
   formaPago         String    @default("Contado") // Contado | Credito
