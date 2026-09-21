@@ -616,7 +616,7 @@ model EmisorConfig {
   ctaDetraccion    String   @default("") // NRO_CUENTA_DETRAC (Banco de la Nación)
   porcDetraccion   Float    @default(4) // POR_DETRACCION
   codDetraccion    String   @default("027") // COD_TIP_DETRACCION (transporte de carga)
-  umbralDetraccion Float    @default(700) // detracción solo si el total supera este monto
+  umbralDetraccion Float    @default(400) // detracción solo si el total supera este monto
   formatoImpresion String   @default("001") // COD_FORM_IMPR: formato del PDF en MiFact (001 básico o el personalizado)
   correoEnvio      String   @default("") // copia opcional al emitir
   activo           Boolean  @default(false) // habilita la emisión electrónica para la sede

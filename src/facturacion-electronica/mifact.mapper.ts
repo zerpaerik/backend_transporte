@@ -105,7 +105,7 @@ export class MifactMapper {
   /** Payload de emisión (SendInvoice) + los montos calculados para persistir. */
   sendInvoice(f: FacturaMap, e: EmisorMap) {
     const { gravado, igv, total } = this.totales(f.items);
-    const umbral = e.umbralDetraccion ?? 700;
+    const umbral = e.umbralDetraccion ?? 400;
     const codDetr = e.codDetraccion || '027';
     const porc = e.porcDetraccion ?? 4;
     const esCarga = f.tipoDocCodigo === '01' || f.tipoDocCodigo === '03';

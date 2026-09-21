@@ -277,7 +277,7 @@ class EmisionService {
     if (items.some((it) => !t(it.descripcion))) e.push('hay líneas sin descripción');
     // Detracción (transporte)
     const total = Math.round(base * 1.18 * 100) / 100;
-    const sujetoDetr = (tipoDoc === '01' || tipoDoc === '03') && total > (emisor.umbralDetraccion ?? 700);
+    const sujetoDetr = (tipoDoc === '01' || tipoDoc === '03') && total > (emisor.umbralDetraccion ?? 400);
     if (sujetoDetr) {
       if (!t(emisor.ctaDetraccion)) e.push('el comprobante supera el umbral de detracción pero falta la CUENTA DE DETRACCIÓN (Banco de la Nación) en Datos del emisor');
       if (!t(f.ubigeoOrigen) || !t(f.ubigeoDestino)) e.push('la detracción de transporte requiere el ubigeo de origen y de destino');
