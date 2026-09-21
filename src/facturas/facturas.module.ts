@@ -389,6 +389,22 @@ class EmisionService {
     return { nombre: `${f.serie}-${f.correlativo}.pdf`, mime: 'application/pdf', base64: resp.pdf_bytes };
   }
 
+  async xml(sedeId: string, id: string) {
+    const emisor = await this.emisor(sedeId);
+    const f = await this.cargar(sedeId, id);
+    if (!f.correlativo) throw new BadRequestException('El comprobante aún no fue emitido.');
+    // Usa el XML guardado al emitir; si no está, lo pide a MiFact.
+    let xml = f.xml || '';
+    if (!xml) {
+      const resp = await this.client.getInvoice(this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { cdr: true }));
+      xml = resp.xml_enviado || '';
+    }
+    if (!xml) throw new BadRequestException('No hay XML disponible para este comprobante.');
+    // MiFact puede devolver el XML como texto o en base64; se normaliza a base64 para descargar.
+    const base64 = /^\s*</.test(xml) ? Buffer.from(xml, 'utf8').toString('base64') : xml;
+    return { nombre: `${f.serie}-${f.correlativo}.xml`, mime: 'application/xml', base64 };
+  }
+
   async anular(sedeId: string, id: string, motivo: string) {
     const emisor = await this.emisor(sedeId);
     const f = await this.cargar(sedeId, id);
@@ -420,6 +436,7 @@ class FacturasController {
   @Post(':id/emitir') emitir(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.emision.emitir(u.sedeId, id); }
   @Post(':id/estado') estado(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.emision.estado(u.sedeId, id); }
   @Get(':id/pdf') pdf(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.emision.pdf(u.sedeId, id); }
+  @Get(':id/xml') xml(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.emision.xml(u.sedeId, id); }
   @Post(':id/anular') anular(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: AnularDto) { return this.emision.anular(u.sedeId, id, dto.motivo || ''); }
   @Post(':id/correo') correo(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: CorreoDto) { return this.emision.correo(u.sedeId, id, dto.correo); }
 }
