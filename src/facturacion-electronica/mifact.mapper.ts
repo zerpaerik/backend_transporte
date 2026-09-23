@@ -148,10 +148,16 @@ export class MifactMapper {
     // Moneda distinta de PEN: MiFact exige el tipo de cambio (hasta 3 decimales) para mostrarlo.
     if ((f.moneda || 'PEN') !== 'PEN' && f.tipoCambio) p.TIP_CAMBIO = Number(f.tipoCambio).toFixed(3);
     if (e.correoEnvio) p.TXT_CORREO_ENVIO = e.correoEnvio;
-    // Crédito: fecha de vencimiento + 1 cuota por el total (representación UBL que espera MiFact).
-    if ((f.formaPago || 'Contado') === 'Credito' && f.fechaVencimiento) {
+    // Neto pendiente de pago = total − detracción (lo que el cliente paga al emisor).
+    const neto = r2(total - montoDetraccion);
+    const esCredito = (f.formaPago || 'Contado') === 'Credito' && !!f.fechaVencimiento;
+    // Tipo de pago (referencia MiFact): 001 contado · 002 crédito.
+    p.COD_TIP_PAGO = esCredito ? '002' : '001';
+    // Crédito: fecha de vencimiento + 1 cuota por el NETO pendiente (así lo muestra el formato
+    // de MiFact en "Crédito en cuotas / Monto neto pendiente").
+    if (esCredito) {
       p.FEC_VENCIMIENTO = f.fechaVencimiento;
-      p.cuotas = [{ NRO_CUOTA: '1', FECHA_CUOTA: f.fechaVencimiento, MONTO_CUOTA: money(total) }];
+      p.cuotas = [{ NRO_CUOTA: '1', FECHA_CUOTA: f.fechaVencimiento, MONTO_CUOTA: money(neto) }];
     }
 
     if (sujetoDetraccion) {
@@ -159,15 +165,31 @@ export class MifactMapper {
       p.POR_DETRACCION = porc.toFixed(2);
       p.NRO_CUENTA_DETRAC = e.ctaDetraccion || '';
       p.COD_TIP_DETRACCION = codDetr;
-      p.MNT_PENDIENTE = money(r2(total - montoDetraccion));
+      p.MNT_PENDIENTE = money(neto);
+      // Medio de pago de la detracción (indicación de MiFact: mostrar "DEPOSITO EN CUENTA").
+      p.COD_FRM_PAGO = 'DEPOSITO EN CUENTA';
       const vr = money(f.valorReferencial || 0);
+      const origenTxt = (f.origen || '').trim() || 'SIN DIRECCION';
+      const destinoTxt = (f.destino || '').trim() || 'SIN DIRECCION';
+      const detalle = f.detalleViaje || 'SERVICIO DE TRANSPORTE DE CARGA';
+      // Campos del viaje a nivel raíz: son los que lee el formato de impresión de MiFact
+      // (valor referencial, origen-destino y detalle del viaje en el bloque de detracción).
+      p.UBIGEO_PUNTO_ORIGEN_VIAJE = f.ubigeoOrigen || '';
+      p.DIREC_PUNTO_ORIG_VIAJE = origenTxt;
+      p.UBIGEO_PUNTO_DEST_VIAJE = f.ubigeoDestino || '';
+      p.DIREC_PUNTO_DEST_VIAJE = destinoTxt;
+      p.DET_VIAJE = detalle;
+      p.VR_SERV_TRANSPORTE_VIAJE = vr;
+      p.VR_CARGA_EFECTIVA_VIAJE = vr;
+      p.VR_CARGA_UTIL_NOMINAL_VIAJE = vr;
+      // Se mantiene también el bloque "transporte" (UBL) que ya aceptaba SUNAT.
       p.transporte = [
         {
           COD_UBI_PRTD: f.ubigeoOrigen || '',
-          TXT_DMCL_FISC_PRTD: (f.origen || '').trim() || 'SIN DIRECCION',
+          TXT_DMCL_FISC_PRTD: origenTxt,
           COD_UBI_LLGD: f.ubigeoDestino || '',
-          TXT_DMCL_FISC_LLGD: (f.destino || '').trim() || 'SIN DIRECCION',
-          DETALLE_VIAJE: f.detalleViaje || 'SERVICIO DE TRANSPORTE DE CARGA',
+          TXT_DMCL_FISC_LLGD: destinoTxt,
+          DETALLE_VIAJE: detalle,
           VALOR_REF_SERV_TRANSP: vr,
           VALOR_REF_CARGA_EFECT: vr,
           VALOR_REF_CARGA_UTIL: vr,
@@ -202,11 +224,13 @@ export class MifactMapper {
       const linea = `${(cta.banco || '').trim()} ${(cta.moneda || '').trim()} - Cta ${nro}${cta.cci && cta.cci.trim() ? ` / CCI ${cta.cci.trim()}` : ''}`.replace(/\s+/g, ' ').trim();
       adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: linea });
     }
-    if (adic.length) p.datos_adicionales = adic;
-    // Orden de compra / pedido → columna dedicada del comprobante.
+    // Orden de compra / referencia → casilla "O/C" del PDF de MiFact (dato adicional código 15).
     if (f.referencia && f.referencia.trim()) {
+      adic.push({ COD_TIP_ADIC_SUNAT: '15', TXT_DESC_ADIC_SUNAT: f.referencia.trim() });
+      // Se mantiene además como "otro documento relacionado" (válido para SUNAT).
       p.otro_docs_referenciado = [{ COD_TIP_OTR_DOC_REF: '99', NUM_OTR_DOC_REF: f.referencia.trim() }];
     }
+    if (adic.length) p.datos_adicionales = adic;
     // Guías de remisión referenciadas → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
     // Se referencian tanto la del remitente como la del transportista, si vienen.
     const guias: Record<string, string>[] = [];
