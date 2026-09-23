@@ -109,9 +109,17 @@ export class MifactMapper {
     const codDetr = e.codDetraccion || '027';
     const porc = e.porcDetraccion ?? 4;
     const esCarga = f.tipoDocCodigo === '01' || f.tipoDocCodigo === '03';
-    const sujetoDetraccion = esCarga && !!codDetr && total > umbral;
-    const base = Math.max(total, f.valorReferencial || 0);
-    const montoDetraccion = sujetoDetraccion ? Math.round(base * (porc / 100)) : 0; // soles enteros
+    const esPEN = (f.moneda || 'PEN') === 'PEN';
+    const tc = !esPEN && f.tipoCambio ? Number(f.tipoCambio) : 0;
+    // El umbral (S/) se compara en soles: si la factura es en dólares se convierte con el T.C.
+    const totalSoles = tc > 0 ? r2(total * tc) : total;
+    const sujetoDetraccion = esCarga && !!codDetr && totalSoles > umbral;
+    // Detracción en la MONEDA de la factura (así la calcula y muestra MiFact): el valor
+    // referencial (tablas MTC, en soles) se lleva a la moneda del comprobante para comparar
+    // con el total con IGV y se toma el mayor. En soles se redondea a enteros (regla SUNAT).
+    const vrEnMoneda = tc > 0 ? r2((f.valorReferencial || 0) / tc) : (f.valorReferencial || 0);
+    const base = Math.max(total, vrEnMoneda);
+    const montoDetraccion = sujetoDetraccion ? (esPEN ? Math.round(base * (porc / 100)) : r2(base * (porc / 100))) : 0;
 
     const p: Record<string, any> = {
       COD_TIP_NIF_EMIS: '6',
