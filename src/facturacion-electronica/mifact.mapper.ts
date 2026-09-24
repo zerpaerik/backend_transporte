@@ -225,18 +225,23 @@ export class MifactMapper {
       const dias = Math.max(0, Math.round((new Date(f.fechaVencimiento).getTime() - new Date(f.fecha).getTime()) / 86_400_000));
       adic.push({ COD_TIP_ADIC_SUNAT: '01', TXT_DESC_ADIC_SUNAT: `CREDITO ${dias} DIAS - 01 CUOTA` });
     }
-    // Cuentas bancarias de la sede → como observación, para que el cliente pueda pagar.
-    for (const cta of e.cuentas || []) {
-      const nro = (cta.numero || '').trim();
-      if (!nro) continue;
-      const linea = `${(cta.banco || '').trim()} ${(cta.moneda || '').trim()} - Cta ${nro}${cta.cci && cta.cci.trim() ? ` / CCI ${cta.cci.trim()}` : ''}`.replace(/\s+/g, ' ').trim();
-      adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: linea });
+    // Las cuentas bancarias NO se envían como observación: ya salen fijas en el diseño del PDF
+    // de MiFact (indicación de MiFact, evita duplicarlas).
+    //
+    // Orden de compra (casilla "O/C", dato adicional 15). SUNAT (obs. 4233) exige solo el
+    // número/identificador: letras y números, SIN espacios ni caracteres especiales. Lo que no
+    // cumpla (p. ej. "(DAM)Nº 118-2026-10-451784", "ID: 324721 BK: ...") se manda como
+    // observación (05) para que igual se vea en el comprobante. Ya no se envía como
+    // "otro documento relacionado" (eso generaba la obs. 4010).
+    const ref = (f.referencia || '').trim();
+    if (ref) {
+      if (/^[A-Za-z0-9-]{1,20}$/.test(ref)) adic.push({ COD_TIP_ADIC_SUNAT: '15', TXT_DESC_ADIC_SUNAT: ref });
+      else adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: `REF: ${ref}` });
     }
-    // Orden de compra / referencia → casilla "O/C" del PDF de MiFact (dato adicional código 15).
-    if (f.referencia && f.referencia.trim()) {
-      adic.push({ COD_TIP_ADIC_SUNAT: '15', TXT_DESC_ADIC_SUNAT: f.referencia.trim() });
-      // Se mantiene además como "otro documento relacionado" (válido para SUNAT).
-      p.otro_docs_referenciado = [{ COD_TIP_OTR_DOC_REF: '99', NUM_OTR_DOC_REF: f.referencia.trim() }];
+    // Al contado el formato de MiFact no muestra el cuadro "Crédito en cuotas / neto pendiente";
+    // si hay detracción se deja el neto a pagar como observación para que siempre sea visible.
+    if (!esCredito && sujetoDetraccion) {
+      adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: `NETO A PAGAR (TOTAL - DETRACCION): ${esPEN ? 'S/' : 'US$'} ${money(neto)}` });
     }
     if (adic.length) p.datos_adicionales = adic;
     // Guías de remisión referenciadas → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
