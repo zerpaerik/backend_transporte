@@ -1,7 +1,7 @@
 import { Module, Injectable, NotFoundException, BadRequestException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, JwtUser } from '../common/decorators';
 import { FacturacionElectronicaModule } from '../facturacion-electronica/facturacion-electronica.module';
@@ -84,6 +84,17 @@ class UpdateFacturaDto extends PartialType(CreateFacturaDto) {}
 
 class AnularDto { @IsString() @IsOptional() motivo?: string; }
 class CorreoDto { @IsString() @IsNotEmpty() correo: string; }
+// Cobranza: marcar pagada / pendiente y adjuntar comprobantes de pago.
+class PagoDto {
+  @IsBoolean() pagada: boolean;
+  @IsDateString() @IsOptional() fechaPago?: string;
+  @IsString() @IsOptional() notaPago?: string;
+}
+class ComprobantePagoDto {
+  @IsString() @IsNotEmpty() base64: string;
+  @IsString() @IsOptional() nombre?: string;
+  @IsIn(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']) mime: string;
+}
 
 // Campos escalares (sin items) que van directo a la tabla.
 function toData(dto: Partial<CreateFacturaDto>) {
@@ -125,6 +136,8 @@ function serviciosVRCreate(servicios?: ServicioVRDto[]) {
 const FACTURA_INCLUDE = {
   items: { orderBy: { orden: 'asc' as const } },
   serviciosVR: { orderBy: { orden: 'asc' as const } },
+  // Solo metadatos de los comprobantes de pago (el archivo se descarga aparte).
+  comprobantesPago: { select: { id: true, nombre: true, mime: true, createdAt: true }, orderBy: { createdAt: 'asc' as const } },
 };
 
 @Injectable()
@@ -163,6 +176,37 @@ class FacturasService {
     return this.findOne(sedeId, id);
   }
   async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); await this.prisma.factura.delete({ where: { id } }); return { ok: true }; }
+
+  // --- Cobranzas ---
+  async registrarPago(sedeId: string, id: string, dto: PagoDto) {
+    await this.findOne(sedeId, id);
+    await this.prisma.factura.update({
+      where: { id },
+      data: dto.pagada
+        ? { pagada: true, fechaPago: dto.fechaPago ? new Date(dto.fechaPago) : new Date(), notaPago: dto.notaPago ?? '' }
+        : { pagada: false, fechaPago: null, notaPago: '' },
+    });
+    return this.findOne(sedeId, id);
+  }
+  async agregarComprobantePago(sedeId: string, id: string, dto: ComprobantePagoDto) {
+    await this.findOne(sedeId, id);
+    const archivo = Buffer.from(dto.base64, 'base64');
+    if (!archivo.length) throw new BadRequestException('El archivo está vacío.');
+    if (archivo.length > 10 * 1024 * 1024) throw new BadRequestException('El archivo supera 10 MB.');
+    await this.prisma.facturaComprobantePago.create({ data: { facturaId: id, archivo, nombre: dto.nombre || 'comprobante', mime: dto.mime } });
+    return this.findOne(sedeId, id);
+  }
+  async descargarComprobantePago(sedeId: string, id: string, cid: string) {
+    await this.findOne(sedeId, id);
+    const c = await this.prisma.facturaComprobantePago.findFirst({ where: { id: cid, facturaId: id } });
+    if (!c) throw new NotFoundException('Comprobante no encontrado');
+    return { nombre: c.nombre, mime: c.mime, base64: Buffer.from(c.archivo).toString('base64') };
+  }
+  async quitarComprobantePago(sedeId: string, id: string, cid: string) {
+    await this.findOne(sedeId, id);
+    await this.prisma.facturaComprobantePago.deleteMany({ where: { id: cid, facturaId: id } });
+    return this.findOne(sedeId, id);
+  }
 }
 
 @Injectable()
@@ -440,6 +484,11 @@ class FacturasController {
   @Get(':id/xml') xml(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.emision.xml(u.sedeId, id); }
   @Post(':id/anular') anular(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: AnularDto) { return this.emision.anular(u.sedeId, id, dto.motivo || ''); }
   @Post(':id/correo') correo(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: CorreoDto) { return this.emision.correo(u.sedeId, id, dto.correo); }
+  // --- Cobranzas ---
+  @Patch(':id/pago') pago(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: PagoDto) { return this.service.registrarPago(u.sedeId, id, dto); }
+  @Post(':id/comprobantes-pago') subirComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: ComprobantePagoDto) { return this.service.agregarComprobantePago(u.sedeId, id, dto); }
+  @Get(':id/comprobantes-pago/:cid') bajarComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('cid') cid: string) { return this.service.descargarComprobantePago(u.sedeId, id, cid); }
+  @Delete(':id/comprobantes-pago/:cid') quitarComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('cid') cid: string) { return this.service.quitarComprobantePago(u.sedeId, id, cid); }
 }
 
 @Module({ imports: [FacturacionElectronicaModule], controllers: [FacturasController], providers: [FacturasService, EmisionService] })

@@ -33,7 +33,7 @@ class DashboardService {
 
     const operativos = vehiculos.filter((v) => v.estado === 'Operativo').length;
     const ventasFacturadas = facturas.filter((f) => f.estadoSunat !== 'Anulada').reduce((s, f) => s + f.monto + f.igv, 0);
-    const porCobrar = facturas.filter((f) => f.estadoSunat === 'Emitida' || f.estadoSunat === 'Aceptada').reduce((s, f) => s + f.monto + f.igv, 0);
+    const porCobrar = facturas.filter((f) => (f.estadoSunat === 'Emitida' || f.estadoSunat === 'Aceptada') && !f.pagada).reduce((s, f) => s + f.monto + f.igv, 0);
     const gastoMantenimiento = ordenes.reduce((s, o) => s + o.costo, 0);
     const planillaNeta = empleados.reduce((s, e) => s + e.sueldoBase + e.bonos - e.descuentos, 0);
 

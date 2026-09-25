@@ -530,6 +530,11 @@ model Factura {
   fechaVencimiento  DateTime? @db.Date
   items             FacturaItem[]
   serviciosVR       FacturaServicioVR[]
+  // Cobranza (control de pago, independiente del estado SUNAT)
+  pagada            Boolean   @default(false)
+  fechaPago         DateTime? @db.Date
+  notaPago          String    @default("") // banco, n° de operación, etc.
+  comprobantesPago  FacturaComprobantePago[]
   // Respuesta SUNAT / MiFact
   estadoDocumento   String    @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
   sunatDescripcion  String    @default("")
@@ -576,6 +581,20 @@ model FacturaItem {
 // referencial de la factura es la suma de estos. Se guardan también los insumos del
 // cálculo para poder recalcular cada servicio desde las tablas del DS 022-2025-MTC
 // al momento de emitir, igual que se hace con el valor referencial único.
+// Comprobante de pago de una factura (captura/voucher en JPG/PNG o PDF).
+model FacturaComprobantePago {
+  id        String   @id @default(uuid())
+  factura   Factura  @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  facturaId String
+  nombre    String   @default("comprobante")
+  mime      String   @default("application/octet-stream")
+  archivo   Bytes
+  createdAt DateTime @default(now())
+
+  @@index([facturaId])
+  @@map("factura_comprobantes_pago")
+}
+
 model FacturaServicioVR {
   id        String  @id @default(uuid())
   factura   Factura @relation(fields: [facturaId], references: [id], onDelete: Cascade)
