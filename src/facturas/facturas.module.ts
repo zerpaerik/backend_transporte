@@ -70,6 +70,7 @@ class CreateFacturaDto {
   @IsString() @IsOptional() origen?: string;
   @IsString() @IsOptional() destino?: string;
   @IsString() @IsOptional() detalleViaje?: string;
+  @IsString() @IsOptional() observaciones?: string;
   @IsIn(['Contado', 'Credito']) @IsOptional() formaPago?: string;
   @IsDateString() @IsOptional() fechaVencimiento?: string;
   // Referencia para NC/ND
@@ -242,7 +243,7 @@ class EmisionService {
       moneda: f.moneda || 'PEN', tipoCambio: f.tipoCambio,
       cliente: f.cliente, ruc: f.ruc && f.ruc !== '-' ? f.ruc : '', direccion: f.direccion,
       items: this.itemsMapper(f),
-      valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, origen: f.origen, destino: f.destino, detalleViaje: f.detalleViaje,
+      valorReferencial: f.valorReferencial, ubigeoOrigen: f.ubigeoOrigen, ubigeoDestino: f.ubigeoDestino, origen: f.origen, destino: f.destino, detalleViaje: f.detalleViaje, observaciones: f.observaciones,
       formaPago: f.formaPago, fechaVencimiento: f.fechaVencimiento ? this.fechaISO(f.fechaVencimiento) : null,
       referencia: f.referenciaVR, guia: f.guia, guiaTransportista: f.guiaTransportista,
       docRefTipo: f.docRefTipo, docRefSerie: f.docRefSerie, docRefCorrelativo: f.docRefCorrelativo, codTipNc: f.codTipNc, motivo: f.motivo,

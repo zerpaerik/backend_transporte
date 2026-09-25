@@ -48,6 +48,7 @@ export interface FacturaMap {
   origen?: string;
   destino?: string;
   detalleViaje?: string;
+  observaciones?: string; // texto libre → "Observaciones" del comprobante (una línea por renglón)
   formaPago?: string; // Contado | Credito
   fechaVencimiento?: string | null;
   codTipNc?: string;
@@ -242,6 +243,12 @@ export class MifactMapper {
     // si hay detracción se deja el neto a pagar como observación para que siempre sea visible.
     if (!esCredito && sujetoDetraccion) {
       adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: `NETO A PAGAR (TOTAL - DETRACCION): ${esPEN ? 'S/' : 'US$'} ${money(neto)}` });
+    }
+    // Observaciones libres del comprobante (p. ej. la DAM que el cliente pide ver): cada
+    // renglón se manda como una observación (dato adicional 05) para que MiFact lo imprima.
+    for (const linea of (f.observaciones || '').split(/\r?\n/)) {
+      const t = linea.trim();
+      if (t) adic.push({ COD_TIP_ADIC_SUNAT: '05', TXT_DESC_ADIC_SUNAT: t });
     }
     if (adic.length) p.datos_adicionales = adic;
     // Guías de remisión referenciadas → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
