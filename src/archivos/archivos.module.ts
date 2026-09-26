@@ -1,5 +1,5 @@
-import { Module, Injectable, NotFoundException, BadRequestException, Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
-import { IsOptional, IsString, IsNotEmpty, IsInt } from 'class-validator';
+import { Module, Injectable, NotFoundException, BadRequestException, ConflictException, Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsOptional, IsString, IsNotEmpty, IsInt } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 
@@ -33,6 +33,14 @@ class SubirDto {
   @IsString() @IsOptional() mime?: string;
   @IsString() @IsNotEmpty() base64: string;
 }
+class MoverDto {
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(500) @IsString({ each: true }) ids: string[];
+  @IsString() @IsNotEmpty() carpetaId: string; // carpeta destino
+}
+
+// Dos archivos "se llaman igual" sin importar mayúsculas, espacios de sobra ni la forma
+// en que venga codificada una tilde: en Windows "Factura.pdf" y "factura.pdf" son el mismo.
+const claveNombre = (nombre: string) => nombre.normalize('NFC').trim().toLocaleLowerCase('es');
 
 @Injectable()
 class ArchivosService {
@@ -42,6 +50,13 @@ class ArchivosService {
     const c = await this.prisma.carpeta.findFirst({ where: { id, sedeId } });
     if (!c) throw new NotFoundException('Carpeta no encontrada');
     return c;
+  }
+
+  // ¿Ya hay en la carpeta un archivo con ese nombre? (sin contar el propio, al renombrar)
+  private async nombreOcupado(carpetaId: string, nombre: string, excluirId?: string) {
+    const clave = claveNombre(nombre);
+    const enCarpeta = await this.prisma.archivo.findMany({ where: { carpetaId }, select: { id: true, nombre: true } });
+    return enCarpeta.some((a) => a.id !== excluirId && claveNombre(a.nombre) === clave);
   }
 
   async listar(sedeId: string, carpetaId?: string) {
@@ -109,14 +124,51 @@ class ArchivosService {
 
   async subir(sedeId: string, dto: SubirDto) {
     await this.carpetaDeSede(sedeId, dto.carpetaId);
+    // Se guarda normalizado (NFC): una tilde queda siempre escrita igual, venga de donde venga.
+    const nombre = dto.nombre.normalize('NFC').trim();
+    if (!nombre) throw new BadRequestException('El archivo no tiene nombre.');
+    // Se valida antes de decodificar: no tiene sentido procesar 20 MB para rechazarlos.
+    if (await this.nombreOcupado(dto.carpetaId, nombre)) {
+      throw new ConflictException(`No se puede subir "${nombre}" porque ya existe un archivo con ese nombre en esta carpeta.`);
+    }
     const data = Buffer.from(dto.base64, 'base64');
     if (data.length === 0) throw new BadRequestException('El archivo está vacío.');
     if (data.length > MAX_BYTES) throw new BadRequestException('El archivo supera el límite de 20 MB.');
     const a = await this.prisma.archivo.create({
-      data: { sedeId, carpetaId: dto.carpetaId, nombre: dto.nombre, mime: dto.mime ?? 'application/octet-stream', size: data.length, data },
+      data: { sedeId, carpetaId: dto.carpetaId, nombre, mime: dto.mime ?? 'application/octet-stream', size: data.length, data },
       select: ARCHIVO_SELECT,
     });
     return a;
+  }
+
+  // Mueve archivos a otra carpeta de la sede. Los que chocan con un nombre que ya existe
+  // en el destino NO se mueven (se informan); el resto sí. Los que ya están ahí se ignoran.
+  async mover(sedeId: string, dto: MoverDto) {
+    const destino = await this.carpetaDeSede(sedeId, dto.carpetaId);
+    const ids = [...new Set(dto.ids)];
+    const archivos = await this.prisma.archivo.findMany({
+      where: { id: { in: ids }, sedeId },
+      select: { id: true, nombre: true, carpetaId: true },
+      orderBy: { nombre: 'asc' },
+    });
+    if (archivos.length !== ids.length) throw new NotFoundException('Alguno de los archivos ya no existe. Actualiza la página e inténtalo de nuevo.');
+
+    const enDestino = await this.prisma.archivo.findMany({ where: { carpetaId: destino.id }, select: { nombre: true } });
+    const ocupados = new Set(enDestino.map((a) => claveNombre(a.nombre)));
+    const aMover: string[] = [];
+    const conflictos: string[] = [];
+    for (const a of archivos) {
+      if (a.carpetaId === destino.id) continue;
+      const clave = claveNombre(a.nombre);
+      // También evita que dos archivos del mismo lote terminen con el mismo nombre.
+      if (ocupados.has(clave)) { conflictos.push(a.nombre); continue; }
+      ocupados.add(clave);
+      aMover.push(a.id);
+    }
+    if (aMover.length) {
+      await this.prisma.archivo.updateMany({ where: { id: { in: aMover }, sedeId }, data: { carpetaId: destino.id } });
+    }
+    return { movidos: aMover.length, conflictos, destino: { id: destino.id, nombre: destino.nombre } };
   }
   async descargar(sedeId: string, id: string) {
     const a = await this.prisma.archivo.findFirst({ where: { id, sedeId } });
@@ -124,9 +176,14 @@ class ArchivosService {
     return { nombre: a.nombre, mime: a.mime, base64: Buffer.from(a.data).toString('base64') };
   }
   async renombrarArchivo(sedeId: string, id: string, nombre: string) {
-    const a = await this.prisma.archivo.findFirst({ where: { id, sedeId }, select: { id: true } });
+    const a = await this.prisma.archivo.findFirst({ where: { id, sedeId }, select: { id: true, carpetaId: true } });
     if (!a) throw new NotFoundException('Archivo no encontrado');
-    return this.prisma.archivo.update({ where: { id }, data: { nombre: nombre.trim() }, select: ARCHIVO_SELECT });
+    const nuevo = nombre.normalize('NFC').trim();
+    // Misma regla que al subir: si no, bastaría renombrar para tener dos iguales.
+    if (await this.nombreOcupado(a.carpetaId, nuevo, a.id)) {
+      throw new ConflictException(`Ya existe un archivo llamado "${nuevo}" en esta carpeta.`);
+    }
+    return this.prisma.archivo.update({ where: { id }, data: { nombre: nuevo }, select: ARCHIVO_SELECT });
   }
   async borrarArchivo(sedeId: string, id: string) {
     const a = await this.prisma.archivo.findFirst({ where: { id, sedeId }, select: { id: true } });
@@ -157,6 +214,7 @@ class ArchivosController {
   @Delete('carpetas/:id') borrarCarpeta(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.borrarCarpeta(u.sedeId, id); }
   @Post('carpetas/:id/meses') meses(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: MesesDto) { return this.service.crearMeses(u.sedeId, id, dto.anio); }
   @Post('sembrar') sembrar(@CurrentUser() u: JwtUser) { return this.service.sembrarBase(u.sedeId); }
+  @Post('mover') mover(@CurrentUser() u: JwtUser, @Body() dto: MoverDto) { return this.service.mover(u.sedeId, dto); }
   @Post() subir(@CurrentUser() u: JwtUser, @Body() dto: SubirDto) { return this.service.subir(u.sedeId, dto); }
   @Get(':id/descargar') descargar(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.descargar(u.sedeId, id); }
   @Patch(':id') renombrarArchivo(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: RenombrarDto) { return this.service.renombrarArchivo(u.sedeId, id, dto.nombre); }

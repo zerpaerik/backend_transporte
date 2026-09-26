@@ -89,6 +89,25 @@ class PagoDto {
   @IsBoolean() pagada: boolean;
   @IsDateString() @IsOptional() fechaPago?: string;
   @IsString() @IsOptional() notaPago?: string;
+  @IsNumber() @Min(0) @IsOptional() montoCobrado?: number; // en la moneda del comprobante; por defecto, el neto
+  @IsIn(['Cliente', 'Empresa']) @IsOptional() detraccionResponsable?: string; // si no viene, se deduce del monto cobrado
+}
+// Depósito de la detracción en el Banco de la Nación. numero vacío = quitar el depósito.
+class DetraccionDto {
+  @IsIn(['Cliente', 'Empresa']) @IsOptional() responsable?: string;
+  @IsDateString() @IsOptional() fecha?: string | null;
+  @IsString() @IsOptional() numero?: string;
+  @IsNumber() @Min(0) @IsOptional() monto?: number; // soles
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+// Quién deposita la detracción según lo que se cobró: si el cliente pagó el neto, la
+// descontó y le toca depositarla a él (lo normal); si pagó el total, la empresa recibió
+// ese dinero y le toca depositarla a ella. Se decide por el más cercano de los dos.
+// (El frontend usa la misma regla para sugerirlo mientras se escribe el monto.)
+function responsableDetraccion(montoCobrado: number, neto: number, detraccion: number): 'Cliente' | 'Empresa' {
+  return montoCobrado >= neto + detraccion / 2 ? 'Empresa' : 'Cliente';
 }
 class ComprobantePagoDto {
   @IsString() @IsNotEmpty() base64: string;
@@ -179,13 +198,47 @@ class FacturasService {
 
   // --- Cobranzas ---
   async registrarPago(sedeId: string, id: string, dto: PagoDto) {
-    await this.findOne(sedeId, id);
-    await this.prisma.factura.update({
-      where: { id },
-      data: dto.pagada
-        ? { pagada: true, fechaPago: dto.fechaPago ? new Date(dto.fechaPago) : new Date(), notaPago: dto.notaPago ?? '' }
-        : { pagada: false, fechaPago: null, notaPago: '' },
-    });
+    const f = await this.findOne(sedeId, id);
+    const data: any = {};
+    if (dto.pagada) {
+      const total = f.total || f.monto + f.igv;
+      const detraccion = f.sujetoDetraccion ? f.montoDetraccion || 0 : 0;
+      const neto = r2(total - detraccion);
+      const cobrado = dto.montoCobrado !== undefined ? r2(dto.montoCobrado) : neto;
+      Object.assign(data, {
+        pagada: true,
+        fechaPago: dto.fechaPago ? new Date(dto.fechaPago) : new Date(),
+        notaPago: dto.notaPago ?? '',
+        montoCobrado: cobrado,
+      });
+      if (f.sujetoDetraccion) data.detraccionResponsable = dto.detraccionResponsable || responsableDetraccion(cobrado, neto, detraccion);
+    } else {
+      Object.assign(data, { pagada: false, fechaPago: null, notaPago: '', montoCobrado: 0 });
+      // Si el depósito de la detracción ya está registrado, se conserva quién lo hizo.
+      if (!f.detraccionNumero) data.detraccionResponsable = '';
+    }
+    await this.prisma.factura.update({ where: { id }, data });
+    return this.findOne(sedeId, id);
+  }
+
+  // Registra (o quita) el depósito de la detracción y/o a quién le corresponde hacerlo.
+  async registrarDetraccion(sedeId: string, id: string, dto: DetraccionDto) {
+    const f = await this.findOne(sedeId, id);
+    if (!f.sujetoDetraccion) throw new BadRequestException('Este comprobante no está sujeto a detracción.');
+    const data: any = {};
+    if (dto.responsable !== undefined) data.detraccionResponsable = dto.responsable;
+    if (dto.numero !== undefined) {
+      const numero = dto.numero.trim();
+      if (numero) {
+        if (!dto.fecha) throw new BadRequestException('Indica la fecha del depósito de la detracción.');
+        if (!(Number(dto.monto) > 0)) throw new BadRequestException('Indica el monto depositado (mayor a 0).');
+        Object.assign(data, { detraccionNumero: numero, detraccionFecha: new Date(dto.fecha), detraccionMonto: r2(Number(dto.monto)) });
+      } else {
+        Object.assign(data, { detraccionNumero: '', detraccionFecha: null, detraccionMonto: 0 });
+      }
+    }
+    if (!Object.keys(data).length) throw new BadRequestException('No hay nada que actualizar.');
+    await this.prisma.factura.update({ where: { id }, data });
     return this.findOne(sedeId, id);
   }
   async agregarComprobantePago(sedeId: string, id: string, dto: ComprobantePagoDto) {
@@ -486,6 +539,7 @@ class FacturasController {
   @Post(':id/correo') correo(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: CorreoDto) { return this.emision.correo(u.sedeId, id, dto.correo); }
   // --- Cobranzas ---
   @Patch(':id/pago') pago(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: PagoDto) { return this.service.registrarPago(u.sedeId, id, dto); }
+  @Patch(':id/detraccion') detraccion(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: DetraccionDto) { return this.service.registrarDetraccion(u.sedeId, id, dto); }
   @Post(':id/comprobantes-pago') subirComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: ComprobantePagoDto) { return this.service.agregarComprobantePago(u.sedeId, id, dto); }
   @Get(':id/comprobantes-pago/:cid') bajarComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('cid') cid: string) { return this.service.descargarComprobantePago(u.sedeId, id, cid); }
   @Delete(':id/comprobantes-pago/:cid') quitarComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('cid') cid: string) { return this.service.quitarComprobantePago(u.sedeId, id, cid); }
