@@ -534,7 +534,14 @@ model Factura {
   pagada            Boolean   @default(false)
   fechaPago         DateTime? @db.Date
   notaPago          String    @default("") // banco, n° de operación, etc.
+  montoCobrado      Float     @default(0) // lo que entró a la cuenta de la empresa (en la moneda del comprobante)
   comprobantesPago  FacturaComprobantePago[]
+  // Detracción (SPOT): quién la deposita en el Banco de la Nación y la constancia del depósito.
+  // Por norma la deposita el cliente; si el cliente pagó el total (sin descontarla), le toca a la empresa.
+  detraccionResponsable String    @default("") // "" aún sin definir (se toma como Cliente) | Cliente | Empresa
+  detraccionFecha       DateTime? @db.Date // fecha del depósito
+  detraccionNumero      String    @default("") // N° de constancia de depósito (número de detracción)
+  detraccionMonto       Float     @default(0) // monto depositado, siempre en soles
   // Respuesta SUNAT / MiFact
   estadoDocumento   String    @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
   sunatDescripcion  String    @default("")

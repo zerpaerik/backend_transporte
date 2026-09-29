@@ -6,8 +6,14 @@ import { map } from 'rxjs/operators';
  * Convierte las fechas puras (@db.Date) a cadenas "YYYY-MM-DD" en las respuestas,
  * para que el frontend las reciba en el mismo formato que usa internamente.
  * Los timestamps createdAt/updatedAt se dejan como ISO completo.
+ *
+ * Debe listar TODAS las columnas @db.Date del schema: si falta una, sale como medianoche
+ * UTC ("2026-09-26T00:00:00.000Z") y en Perú (UTC-5) se muestra como el día anterior.
  */
-const DATE_ONLY_FIELDS = new Set(['vencimiento', 'fecha', 'fechaLimite', 'semanaDesde', 'semanaHasta', 'citaFecha', 'fechaCliente', 'fechaViaje', 'memo']);
+const DATE_ONLY_FIELDS = new Set([
+  'vencimiento', 'fecha', 'fechaLimite', 'semanaDesde', 'semanaHasta', 'citaFecha', 'fechaCliente', 'fechaViaje', 'memo',
+  'fechaVencimiento', 'fechaPago', 'comisionFechaPago', 'fechaEmision', 'fechaTraslado', 'detraccionFecha',
+]);
 
 function transform(value: any): any {
   if (Array.isArray(value)) return value.map(transform);
