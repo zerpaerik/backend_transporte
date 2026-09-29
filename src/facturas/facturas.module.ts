@@ -3,6 +3,7 @@ import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { CurrentUser, JwtUser } from '../common/decorators';
 import { FacturacionElectronicaModule } from '../facturacion-electronica/facturacion-electronica.module';
 import { MifactClient } from '../facturacion-electronica/mifact.client';
@@ -133,6 +134,14 @@ function serviciosVRCreate(servicios?: ServicioVRDto[]) {
 }
 
 // Lo que se incluye al leer una factura: sus líneas y el desglose del valor referencial.
+// Numeración descendente (el correlativo va con ceros a la izquierda, así que el orden
+// de texto coincide con el numérico). Los borradores (correlativo vacío) se suben al inicio.
+const ORDEN_COMPROBANTES: Prisma.FacturaOrderByWithRelationInput[] = [
+  { correlativo: 'desc' },
+  { serie: 'asc' },
+  { createdAt: 'desc' },
+];
+
 const FACTURA_INCLUDE = {
   items: { orderBy: { orden: 'asc' as const } },
   serviciosVR: { orderBy: { orden: 'asc' as const } },
@@ -143,7 +152,10 @@ const FACTURA_INCLUDE = {
 @Injectable()
 class FacturasService {
   constructor(private prisma: PrismaService) {}
-  findAll(sedeId: string) { return this.prisma.factura.findMany({ where: { sedeId }, orderBy: { fecha: 'desc' }, include: FACTURA_INCLUDE }); }
+  async findAll(sedeId: string) {
+    const fs = await this.prisma.factura.findMany({ where: { sedeId }, orderBy: ORDEN_COMPROBANTES, include: FACTURA_INCLUDE });
+    return [...fs.filter((f) => !f.correlativo), ...fs.filter((f) => f.correlativo)];
+  }
   async findOne(sedeId: string, id: string) {
     const f = await this.prisma.factura.findFirst({ where: { id, sedeId }, include: FACTURA_INCLUDE });
     if (!f) throw new NotFoundException('Factura no encontrada');
