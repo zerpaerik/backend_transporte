@@ -65,6 +65,33 @@ const IGV = 0.18;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const money = (n: number) => r2(n).toFixed(2);
 
+/**
+ * Lee las guías de remisión escritas en un campo de texto. Puede haber varias (una factura
+ * que junta varios viajes trae la guía de cada uno), separadas por coma, punto y coma, barra,
+ * punto, espacio o "y": "EG07-4314, EG07-4318". Cada una debe ser SERIE-NÚMERO: serie de 4 letras o
+ * números y número de hasta 8 dígitos (se completa con ceros a 8, como exige SUNAT).
+ * Lo que no calce va a `invalidas`, para avisarlo antes de emitir en vez de enviarlo
+ * deformado (antes "EG07-4314, EG07-4318" se mandaba como la guía EG07-4314074318).
+ */
+export function leerGuias(texto?: string | null): { validas: { serie: string; numero: string }[]; invalidas: string[] } {
+  const validas: { serie: string; numero: string }[] = [];
+  const invalidas: string[] = [];
+  const vistas = new Set<string>();
+  const partes = String(texto || '')
+    .replace(/\s*-\s*/g, '-') // "T002 - 1668" → "T002-1668"
+    .split(/[\s,;/.|]+/) // separadores entre guías (incluye un punto final suelto: "T002-1668.")
+    .filter((p) => p && !/^y$/i.test(p));
+  for (const parte of partes) {
+    const m = /^([A-Za-z0-9]{4})-(\d+)$/.exec(parte);
+    const numero = m ? m[2].replace(/^0+/, '') : '';
+    if (!m || !numero || numero.length > 8) { invalidas.push(parte); continue; }
+    const guia = { serie: m[1].toUpperCase(), numero: numero.padStart(8, '0') };
+    const clave = `${guia.serie}-${guia.numero}`;
+    if (!vistas.has(clave)) { vistas.add(clave); validas.push(guia); }
+  }
+  return { validas, invalidas };
+}
+
 @Injectable()
 export class MifactMapper {
   // 1 = DNI (8 dígitos), 6 = RUC (11). Por defecto RUC.
@@ -252,13 +279,17 @@ export class MifactMapper {
     }
     if (adic.length) p.datos_adicionales = adic;
     // Guías de remisión referenciadas → columna "Guía" (formato SERIE-CORRELATIVO, p. ej. T002-1668).
-    // Se referencian tanto la del remitente como la del transportista, si vienen.
+    // Se referencian la del remitente y la del transportista, si vienen. Cada campo puede traer
+    // varias (una por viaje de la factura) y cada una va como su propia referencia. Las que no
+    // tienen el formato correcto las frena el preflight antes de llegar aquí.
     const guias: Record<string, string>[] = [];
+    const yaEnviadas = new Set<string>();
     for (const g of [f.guia, f.guiaTransportista]) {
-      if (!g || !g.trim()) continue;
-      const [s, ...rest] = g.trim().split('-');
-      const c = rest.join('').replace(/\D/g, '');
-      if (s && c) guias.push({ COD_TIP_DOC_REF: '09', NUM_SERIE_CPE_REF: s.trim(), NUM_CORRE_CPE_REF: c.padStart(8, '0') });
+      for (const { serie, numero } of leerGuias(g).validas) {
+        if (yaEnviadas.has(`${serie}-${numero}`)) continue;
+        yaEnviadas.add(`${serie}-${numero}`);
+        guias.push({ COD_TIP_DOC_REF: '09', NUM_SERIE_CPE_REF: serie, NUM_CORRE_CPE_REF: numero });
+      }
     }
     if (guias.length) p.guias = guias;
 

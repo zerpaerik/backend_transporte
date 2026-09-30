@@ -9,7 +9,7 @@ import { FacturacionElectronicaModule } from '../facturacion-electronica/factura
 import { MifactClient } from '../facturacion-electronica/mifact.client';
 import { MifactConfigService } from '../facturacion-electronica/mifact-config.service';
 import { CorrelativosService } from '../facturacion-electronica/correlativos.service';
-import { MifactMapper, type FacturaMap, type ItemMap } from '../facturacion-electronica/mifact.mapper';
+import { MifactMapper, leerGuias, type FacturaMap, type ItemMap } from '../facturacion-electronica/mifact.mapper';
 import { ValorReferencialService } from '../facturacion-electronica/valor-referencial.service';
 
 const TIPO_COD: Record<string, string> = { Factura: '01', Boleta: '03', 'N. Crédito': '07', 'N. Débito': '08' };
@@ -394,6 +394,14 @@ class EmisionService {
       // Sin valor referencial el transporte va con VALOR_REF en 0: SUNAT lo rechaza y MiFact
       // (demo) muestra un valor por defecto. Se exige calcularlo/sumarlo por servicio.
       if (!(Number(f.valorReferencial) > 0)) e.push('la detracción de transporte requiere el VALOR REFERENCIAL (calcúlalo con las tablas del MTC y suma el de cada viaje)');
+    }
+    // Guías de remisión: cada una debe ser SERIE-NÚMERO (pueden ser varias, separadas por coma).
+    // Una mal escrita se mandaría deformada a SUNAT, así que se frena aquí con el valor exacto.
+    for (const [campo, valor] of [['guía remitente', f.guia], ['guía transportista', f.guiaTransportista]] as const) {
+      const { invalidas } = leerGuias(valor);
+      if (invalidas.length) {
+        e.push(`en ${campo} no se reconoce ${invalidas.map((x) => `"${x}"`).join(', ')} (cada guía va como SERIE-NÚMERO, p. ej. EG07-4314, y varias se separan con coma)`);
+      }
     }
     // Nota de crédito / débito
     if ((tipoDoc === '07' || tipoDoc === '08') && !(t(f.docRefSerie) && t(f.docRefCorrelativo))) {
