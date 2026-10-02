@@ -31,6 +31,7 @@ import { PeajesModule } from './peajes/peajes.module';
 import { ProveedoresModule } from './proveedores/proveedores.module';
 import { AgendaModule } from './agenda/agenda.module';
 import { DevolucionesModule } from './devoluciones/devoluciones.module';
+import { CotizacionesModule } from './cotizaciones/cotizaciones.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { DevolucionesModule } from './devoluciones/devoluciones.module';
     ComisionesModule,
     PlanillasModule,
     DevolucionesModule,
+    CotizacionesModule,
     CombustibleModule,
     ArchivosModule,
     PeajesModule,

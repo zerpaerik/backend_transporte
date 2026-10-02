@@ -41,14 +41,14 @@ model Usuario {
 }
 
 model Vehiculo {
-  id          String @id @default(uuid())
-  placa       String
-  tipo        String // Tracto | Carreta
-  marca       String
-  modelo      String
-  anio        Int
-  kilometraje Int    @default(0)
-  estado      String @default("Operativo") // Operativo | En taller | Inactivo
+  id            String @id @default(uuid())
+  placa         String
+  tipo          String // Tracto | Carreta
+  marca         String
+  modelo        String
+  anio          Int
+  kilometraje   Int    @default(0)
+  estado        String @default("Operativo") // Operativo | En taller | Inactivo
   constanciaTuc String @default("") // Certificado/TUC del vehículo para la GRE (CONSTANCIA_VEHICULAR_TUC)
 
   documentos DocumentoVehiculo[]
@@ -67,11 +67,11 @@ model Vehiculo {
 }
 
 model Conductor {
-  id              String               @id @default(uuid())
-  nombre          String
-  licencia        String
-  dni             String               @default("") // para la GRE (NUM_NIF_CONDUCT)
-  categoria       String
+  id               String               @id @default(uuid())
+  nombre           String
+  licencia         String
+  dni              String               @default("") // para la GRE (NUM_NIF_CONDUCT)
+  categoria        String
   telefono         String
   descuentoMensual Float                @default(0)
   documentos       DocumentoConductor[]
@@ -295,17 +295,17 @@ model OrdenTrabajo {
 }
 
 model Repuesto {
-  id        String   @id @default(uuid())
-  nombre    String
-  categoria String
-  calidad   String // Original | Alternativo | Remanufacturado
-  placa     String   @default("") // vehículo (tracto o carreta) al que pertenece
-  kilometraje Int    @default(0)
-  cantidad  Int      @default(1)
-  garantia  String
-  proveedor String
-  costo     Float    @default(0)
-  fecha     DateTime @db.Date
+  id          String   @id @default(uuid())
+  nombre      String
+  categoria   String
+  calidad     String // Original | Alternativo | Remanufacturado
+  placa       String   @default("") // vehículo (tracto o carreta) al que pertenece
+  kilometraje Int      @default(0)
+  cantidad    Int      @default(1)
+  garantia    String
+  proveedor   String
+  costo       Float    @default(0)
+  fecha       DateTime @db.Date
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -337,60 +337,60 @@ model Neumatico {
 }
 
 model Viaje {
-  id            String   @id @default(uuid())
-  placaTracto   String
-  carreta       String    @default("")
-  conductor     String    @default("")
-  cliente       String // cliente que SOLICITA el servicio (p. ej. agencia de aduana)
-  clienteFactura String   @default("") // a quién se factura; si vacío, se factura al solicitante
-  operacion     String // IMPO | EXPO | Carga suelta
-  contenedor    String
-  tamanio       String    @default("")
-  tipoCarga     String    @default("")
-  horaCita      String    @default("")
-  fechaViaje    DateTime? @db.Date // fecha del viaje, ingresada a mano (independiente del registro)
-  memo          DateTime? @db.Date // vencimiento del MEMO (alerta 72h antes)
-  observacion   String    @default("") // notas libres del viaje
-  fechaCliente  DateTime? @db.Date // fecha en la que debe estar en el cliente
-  horaCliente   String    @default("") // hora en la que debe estar en el cliente
-  origen        String    @default("")
-  destino       String    @default("")
-  devolucion    String    @default("")
-  ubicacion     String    @default("")
-  fechaLimite   DateTime? @db.Date
-  estado        String    @default("Programado") // Programado | En curso | Culminado | Devuelto
-  codigo        String    @default("")
-  clienteRuc    String    @default("")
-  clienteDireccion String @default("")
-  tarifa        Float     @default(0)
-  comisionChofer Float    @default(0)
-  comisionPagada Boolean  @default(false)
+  id                String    @id @default(uuid())
+  placaTracto       String
+  carreta           String    @default("")
+  conductor         String    @default("")
+  cliente           String // cliente que SOLICITA el servicio (p. ej. agencia de aduana)
+  clienteFactura    String    @default("") // a quién se factura; si vacío, se factura al solicitante
+  operacion         String // IMPO | EXPO | Carga suelta
+  contenedor        String
+  tamanio           String    @default("")
+  tipoCarga         String    @default("")
+  horaCita          String    @default("")
+  fechaViaje        DateTime? @db.Date // fecha del viaje, ingresada a mano (independiente del registro)
+  memo              DateTime? @db.Date // vencimiento del MEMO (alerta 72h antes)
+  observacion       String    @default("") // notas libres del viaje
+  fechaCliente      DateTime? @db.Date // fecha en la que debe estar en el cliente
+  horaCliente       String    @default("") // hora en la que debe estar en el cliente
+  origen            String    @default("")
+  destino           String    @default("")
+  devolucion        String    @default("")
+  ubicacion         String    @default("")
+  fechaLimite       DateTime? @db.Date
+  estado            String    @default("Programado") // Programado | En curso | Culminado | Devuelto
+  codigo            String    @default("")
+  clienteRuc        String    @default("")
+  clienteDireccion  String    @default("")
+  tarifa            Float     @default(0)
+  comisionChofer    Float     @default(0)
+  comisionPagada    Boolean   @default(false)
   comisionFechaPago DateTime? @db.Date
-  nOrden        String    @default("")
-  greRemitente  String    @default("")
-  greTransporte String    @default("")
-  factura       String    @default("")
+  nOrden            String    @default("")
+  greRemitente      String    @default("")
+  greTransporte     String    @default("")
+  factura           String    @default("")
 
   // Control de devolución de contenedores (solo aplica a importación)
-  citaFecha           DateTime? @db.Date
-  citaHora            String    @default("")
-  lugarGuardado       String    @default("")
-  estadoDevolucion    String    @default("Pendiente") // Pendiente | En proceso | Devuelto
+  citaFecha           DateTime?     @db.Date
+  citaHora            String        @default("")
+  lugarGuardado       String        @default("")
+  estadoDevolucion    String        @default("Pendiente") // Pendiente | En proceso | Devuelto
   devueltoEn          DateTime? // cuándo pasó a "Devuelto" (para archivar a los 15 días)
   // Quién devolvió el contenedor. Si es distinto del conductor del viaje, queda una
   // compensación: el conductor dueño le debe una devolución al que la hizo.
-  devueltoPor         String    @default("")
+  devueltoPor         String        @default("")
   devueltoPorEn       DateTime? // cuándo se registró la devolución cruzada (para el seguimiento y el orden)
-  compensacionEstado  String    @default("") // "" (no aplica) | Pendiente | Compensada | Pagada
-  compensacionMonto   Float     @default(0)  // monto pagado al que hizo la devolución (opcional)
-  compensacionNota    String    @default("") // p. ej. "compensada con OP-0123" o detalle del pago
+  compensacionEstado  String        @default("") // "" (no aplica) | Pendiente | Compensada | Pagada
+  compensacionMonto   Float         @default(0) // monto pagado al que hizo la devolución (opcional)
+  compensacionNota    String        @default("") // p. ej. "compensada con OP-0123" o detalle del pago
   compensacionEn      DateTime? // cuándo se saldó (se compensó o se pagó); útil para la planilla
-  devolucionArchivada Boolean   @default(false) // se quita del índice de devoluciones (no de operaciones)
+  devolucionArchivada Boolean       @default(false) // se quita del índice de devoluciones (no de operaciones)
   citaArchivos        CitaArchivo[]
   // Adjunto único legado (reemplazado por citaArchivos)
-  citaArchivo       Bytes?
-  citaArchivoNombre String?
-  citaArchivoMime   String?
+  citaArchivo         Bytes?
+  citaArchivoNombre   String?
+  citaArchivoMime     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -493,71 +493,71 @@ model Factura {
   estadoSunat String   @default("Emitida") // Emitida | Aceptada | Pagada | Anulada
 
   // --- Facturación electrónica (MiFact / SUNAT) — aditivo, no rompe lo anterior ---
-  tipoDocCodigo     String    @default("01") // 01 factura · 03 boleta · 07 NC · 08 ND
-  correlativo       String    @default("") // número dentro de la serie (lo controla el sistema)
-  moneda            String    @default("PEN")
-  tipoCambio        Float     @default(0) // solo si moneda != PEN
-  gravado           Float     @default(0)
-  exonerado         Float     @default(0)
-  inafecto          Float     @default(0)
-  total             Float     @default(0)
+  tipoDocCodigo         String                   @default("01") // 01 factura · 03 boleta · 07 NC · 08 ND
+  correlativo           String                   @default("") // número dentro de la serie (lo controla el sistema)
+  moneda                String                   @default("PEN")
+  tipoCambio            Float                    @default(0) // solo si moneda != PEN
+  gravado               Float                    @default(0)
+  exonerado             Float                    @default(0)
+  inafecto              Float                    @default(0)
+  total                 Float                    @default(0)
   // Detracción (SPOT) — transporte de carga
-  sujetoDetraccion  Boolean   @default(false)
-  porcDetraccion    Float     @default(0)
-  montoDetraccion   Float     @default(0)
-  codDetraccion     String    @default("") // 027 transporte de carga
-  ctaDetraccion     String    @default("")
-  valorReferencial  Float     @default(0) // valor referencial del transporte (base alterna de la detracción)
+  sujetoDetraccion      Boolean                  @default(false)
+  porcDetraccion        Float                    @default(0)
+  montoDetraccion       Float                    @default(0)
+  codDetraccion         String                   @default("") // 027 transporte de carga
+  ctaDetraccion         String                   @default("")
+  valorReferencial      Float                    @default(0) // valor referencial del transporte (base alterna de la detracción)
   // Insumos para calcular el valor referencial desde las tablas del DS 022-2025-MTC
-  vrAmbito          String    @default("") // "" | local | nacional
-  vrRuta            String    @default("") // ámbito nacional: ruta del DS
-  vrDestino         String    @default("") // ámbito nacional: destino del DS
-  vrPuerto          String    @default("") // ámbito local: puerto
-  vrZona            String    @default("") // ámbito local: zona
-  vrTipoCarga       String    @default("") // contenedorLleno | contenedorVacio | cargaGeneral | granelAlimentos | granelMinerales
-  pesoTM            Float     @default(0) // peso transportado en toneladas
-  referenciaVR      String    @default("") // referencia / N° de orden de compra
-  guia              String    @default("") // guía de remisión del remitente referenciada (SERIE-CORRELATIVO)
-  guiaTransportista String    @default("") // guía de remisión del transportista referenciada (SERIE-CORRELATIVO)
-  ubigeoOrigen      String    @default("") // COD_UBI_PRTD (bloque transporte)
-  ubigeoDestino     String    @default("") // COD_UBI_LLGD (bloque transporte)
-  origen            String    @default("") // dirección/lugar de partida (TXT_DMCL_FISC_PRTD)
-  destino           String    @default("") // dirección/lugar de llegada (TXT_DMCL_FISC_LLGD)
-  detalleViaje      String    @default("") // DETALLE_VIAJE (detracción transporte)
-  observaciones     String    @default("") // texto libre que sale en "Observaciones" del comprobante (p. ej. la DAM)
+  vrAmbito              String                   @default("") // "" | local | nacional
+  vrRuta                String                   @default("") // ámbito nacional: ruta del DS
+  vrDestino             String                   @default("") // ámbito nacional: destino del DS
+  vrPuerto              String                   @default("") // ámbito local: puerto
+  vrZona                String                   @default("") // ámbito local: zona
+  vrTipoCarga           String                   @default("") // contenedorLleno | contenedorVacio | cargaGeneral | granelAlimentos | granelMinerales
+  pesoTM                Float                    @default(0) // peso transportado en toneladas
+  referenciaVR          String                   @default("") // referencia / N° de orden de compra
+  guia                  String                   @default("") // guía de remisión del remitente referenciada (SERIE-CORRELATIVO)
+  guiaTransportista     String                   @default("") // guía de remisión del transportista referenciada (SERIE-CORRELATIVO)
+  ubigeoOrigen          String                   @default("") // COD_UBI_PRTD (bloque transporte)
+  ubigeoDestino         String                   @default("") // COD_UBI_LLGD (bloque transporte)
+  origen                String                   @default("") // dirección/lugar de partida (TXT_DMCL_FISC_PRTD)
+  destino               String                   @default("") // dirección/lugar de llegada (TXT_DMCL_FISC_LLGD)
+  detalleViaje          String                   @default("") // DETALLE_VIAJE (detracción transporte)
+  observaciones         String                   @default("") // texto libre que sale en "Observaciones" del comprobante (p. ej. la DAM)
   // Forma de pago
-  formaPago         String    @default("Contado") // Contado | Credito
-  fechaVencimiento  DateTime? @db.Date
-  items             FacturaItem[]
-  serviciosVR       FacturaServicioVR[]
+  formaPago             String                   @default("Contado") // Contado | Credito
+  fechaVencimiento      DateTime?                @db.Date
+  items                 FacturaItem[]
+  serviciosVR           FacturaServicioVR[]
   // Cobranza (control de pago, independiente del estado SUNAT)
-  pagada            Boolean   @default(false)
-  fechaPago         DateTime? @db.Date
-  notaPago          String    @default("") // banco, n° de operación, etc.
-  montoCobrado      Float     @default(0) // lo que entró a la cuenta de la empresa (en la moneda del comprobante)
-  comprobantesPago  FacturaComprobantePago[]
+  pagada                Boolean                  @default(false)
+  fechaPago             DateTime?                @db.Date
+  notaPago              String                   @default("") // banco, n° de operación, etc.
+  montoCobrado          Float                    @default(0) // lo que entró a la cuenta de la empresa (en la moneda del comprobante)
+  comprobantesPago      FacturaComprobantePago[]
   // Detracción (SPOT): quién la deposita en el Banco de la Nación y la constancia del depósito.
   // Por norma la deposita el cliente; si el cliente pagó el total (sin descontarla), le toca a la empresa.
-  detraccionResponsable String    @default("") // "" aún sin definir (se toma como Cliente) | Cliente | Empresa
-  detraccionFecha       DateTime? @db.Date // fecha del depósito
-  detraccionNumero      String    @default("") // N° de constancia de depósito (número de detracción)
-  detraccionMonto       Float     @default(0) // monto depositado, siempre en soles
+  detraccionResponsable String                   @default("") // "" aún sin definir (se toma como Cliente) | Cliente | Empresa
+  detraccionFecha       DateTime?                @db.Date // fecha del depósito
+  detraccionNumero      String                   @default("") // N° de constancia de depósito (número de detracción)
+  detraccionMonto       Float                    @default(0) // monto depositado, siempre en soles
   // Respuesta SUNAT / MiFact
-  estadoDocumento   String    @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
-  sunatDescripcion  String    @default("")
-  sunatResponsecode String    @default("")
-  hash              String    @default("") // codigo_hash
-  qr                String    @default("") // cadena_para_codigo_qr
-  ticket            String    @default("")
-  emitidoEn         DateTime? // cuándo se envió a SUNAT
+  estadoDocumento       String                   @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
+  sunatDescripcion      String                   @default("")
+  sunatResponsecode     String                   @default("")
+  hash                  String                   @default("") // codigo_hash
+  qr                    String                   @default("") // cadena_para_codigo_qr
+  ticket                String                   @default("")
+  emitidoEn             DateTime? // cuándo se envió a SUNAT
   // Archivos (CDR + XML se guardan siempre; PDF on-demand vía GetInvoice)
-  xml               String? // xml_enviado
-  cdr               String? // cdr_sunat
+  xml                   String? // xml_enviado
+  cdr                   String? // cdr_sunat
   // Referencia para NC/ND
-  docRefTipo        String    @default("")
-  docRefSerie       String    @default("")
-  docRefCorrelativo String    @default("")
-  codTipNc          String    @default("") // código de motivo de la nota de crédito/débito (catálogo 09/10 SUNAT)
+  docRefTipo            String                   @default("")
+  docRefSerie           String                   @default("")
+  docRefCorrelativo     String                   @default("")
+  codTipNc              String                   @default("") // código de motivo de la nota de crédito/débito (catálogo 09/10 SUNAT)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -625,30 +625,30 @@ model FacturaServicioVR {
 // El TOKEN, el AMBIENTE y la URL base NO viven aquí: son variables de entorno del
 // servidor (seguridad — nadie pasa a producción desde el portal).
 model EmisorConfig {
-  id               String   @id @default(uuid())
-  sedeId           String   @unique
-  ruc              String   @default("")
-  razonSocial      String   @default("")
-  nombreComercial  String   @default("")
-  ubigeo           String   @default("") // COD_UBI_EMIS (6 dígitos del distrito)
-  direccionFiscal  String   @default("")
-  codAnexo         String   @default("0000") // COD_ANEXO_EMIS
-  serieFactura     String   @default("FN01")
-  serieBoleta      String   @default("BN01")
-  serieNotaCredito String   @default("FN01") // NC referida a factura
-  serieNotaDebito  String   @default("FD01") // ND referida a factura
-  serieGuiaTransportista String @default("V001") // serie de la GRE del transportista
-  registroMtc      String   @default("") // NRO_REGISTRO_MTC del transportista (GRE)
-  puntoVenta       String   @default("") // COD_PTO_VENTA
-  ctaDetraccion    String   @default("") // NRO_CUENTA_DETRAC (Banco de la Nación)
-  porcDetraccion   Float    @default(4) // POR_DETRACCION
-  codDetraccion    String   @default("027") // COD_TIP_DETRACCION (transporte de carga)
-  umbralDetraccion Float    @default(400) // detracción solo si el total supera este monto
-  formatoImpresion String   @default("001") // COD_FORM_IMPR: formato del PDF en MiFact (001 básico o el personalizado)
-  correoEnvio      String   @default("") // copia opcional al emitir
-  activo           Boolean  @default(false) // habilita la emisión electrónica para la sede
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  sedeId                 String   @unique
+  ruc                    String   @default("")
+  razonSocial            String   @default("")
+  nombreComercial        String   @default("")
+  ubigeo                 String   @default("") // COD_UBI_EMIS (6 dígitos del distrito)
+  direccionFiscal        String   @default("")
+  codAnexo               String   @default("0000") // COD_ANEXO_EMIS
+  serieFactura           String   @default("FN01")
+  serieBoleta            String   @default("BN01")
+  serieNotaCredito       String   @default("FN01") // NC referida a factura
+  serieNotaDebito        String   @default("FD01") // ND referida a factura
+  serieGuiaTransportista String   @default("V001") // serie de la GRE del transportista
+  registroMtc            String   @default("") // NRO_REGISTRO_MTC del transportista (GRE)
+  puntoVenta             String   @default("") // COD_PTO_VENTA
+  ctaDetraccion          String   @default("") // NRO_CUENTA_DETRAC (Banco de la Nación)
+  porcDetraccion         Float    @default(4) // POR_DETRACCION
+  codDetraccion          String   @default("027") // COD_TIP_DETRACCION (transporte de carga)
+  umbralDetraccion       Float    @default(400) // detracción solo si el total supera este monto
+  formatoImpresion       String   @default("001") // COD_FORM_IMPR: formato del PDF en MiFact (001 básico o el personalizado)
+  correoEnvio            String   @default("") // copia opcional al emitir
+  activo                 Boolean  @default(false) // habilita la emisión electrónica para la sede
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@map("emisor_config")
 }
@@ -755,4 +755,66 @@ model Empleado {
 
   @@index([sedeId])
   @@map("empleados")
+}
+
+// Cotización de servicios de transporte (documento interno, no va a SUNAT).
+// Los datos de la empresa se guardan al crearla (la empresa de la sede en sesión).
+model Cotizacion {
+  id               String           @id @default(uuid())
+  sedeId           String
+  numero           Int
+  codigo           String // COT-0854
+  fecha            DateTime
+  validaHasta      DateTime
+  estado           String           @default("Borrador") // Borrador | Enviada | Aceptada | Rechazada | Convertida
+  cliente          String
+  clienteRuc       String           @default("")
+  clienteDireccion String           @default("")
+  empresaRazon     String           @default("")
+  empresaRuc       String           @default("")
+  empresaDireccion String           @default("")
+  contactoNombre   String           @default("")
+  contactoEmail    String           @default("")
+  contactoTelefono String           @default("")
+  moneda           String           @default("PEN")
+  tipoCambio       Float            @default(0)
+  descuentoGlobal  Float            @default(0) // %
+  igvPorc          Float            @default(18)
+  subtotal         Float            @default(0)
+  descuento        Float            @default(0)
+  igv              Float            @default(0)
+  total            Float            @default(0)
+  notas            String           @default("")
+  condiciones      String           @default("")
+  viajes           String[]         @default([]) // códigos de los viajes creados al pasar a operaciones
+  creadoPor        String           @default("")
+  items            CotizacionItem[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([sedeId, numero])
+  @@index([sedeId])
+  @@map("cotizaciones")
+}
+
+// Ítem de la cotización. Los datos del servicio (operación, ruta, contenedor) se usan
+// para crear los viajes en Operaciones sin volver a digitarlos.
+model CotizacionItem {
+  id           String     @id @default(uuid())
+  cotizacionId String
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  orden        Int        @default(0)
+  descripcion  String
+  cantidad     Float      @default(1)
+  precio       Float      @default(0) // precio unitario sin impuesto
+  descuento    Float      @default(0) // %
+  operacion    String     @default("")
+  origen       String     @default("")
+  destino      String     @default("")
+  devolucion   String     @default("")
+  tamanio      String     @default("")
+  tipoCarga    String     @default("")
+
+  @@index([cotizacionId])
+  @@map("cotizacion_items")
 }

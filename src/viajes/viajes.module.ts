@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, JwtUser } from '../common/decorators';
 import { ComisionesModule, ComisionesService } from '../comisiones/comisiones.module';
 
-class CreateViajeDto {
+export class CreateViajeDto {
   @IsString() @IsNotEmpty({ message: 'La placa del tracto es obligatoria (agrega tractos en Flota).' }) placaTracto: string;
   @IsString() @IsOptional() carreta?: string;
   @IsString() @IsOptional() conductor?: string;
@@ -47,7 +47,7 @@ function toData(dto: Partial<CreateViajeDto>) {
 }
 
 @Injectable()
-class ViajesService {
+export class ViajesService {
   constructor(private prisma: PrismaService, private comisiones: ComisionesService) {}
 
   // Un conductor solo ve sus propios viajes (se relacionan por su nombre).
@@ -97,5 +97,5 @@ class ViajesController {
   @Delete(':id') remove(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.remove(u.sedeId, id); }
 }
 
-@Module({ imports: [ComisionesModule], controllers: [ViajesController], providers: [ViajesService] })
+@Module({ imports: [ComisionesModule], controllers: [ViajesController], providers: [ViajesService], exports: [ViajesService] })
 export class ViajesModule {}
