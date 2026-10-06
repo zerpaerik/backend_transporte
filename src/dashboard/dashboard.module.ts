@@ -34,21 +34,20 @@ class DashboardService {
     const operativos = vehiculos.filter((v) => v.estado === 'Operativo').length;
     const ventasFacturadas = facturas.filter((f) => f.estadoSunat !== 'Anulada').reduce((s, f) => s + f.monto + f.igv, 0);
     // Por cobrar: facturas y boletas no pagadas, menos lo acreditado con notas de crédito aceptadas
-    // (las NC/ND no se cobran; una NC de anulación o por el total deja la factura en cero).
+    // (las NC/ND no se cobran; una NC por el total deja la factura en cero, una parcial la rebaja).
     const clave = (tipo: string, serie: string, corr: string) => `${tipo}|${serie.trim().toUpperCase()}|${parseInt(corr, 10) || corr.trim()}`;
-    const credito = new Map<string, { monto: number; anula: boolean }>();
+    const credito = new Map<string, number>();
     for (const n of facturas) {
       if (n.tipo !== 'N. Crédito' || !['102', '103'].includes(n.estadoDocumento) || !n.docRefSerie || !n.docRefCorrelativo) continue;
       const k = clave(n.docRefTipo || '01', n.docRefSerie, n.docRefCorrelativo);
-      const c = credito.get(k) ?? { monto: 0, anula: false };
-      credito.set(k, { monto: c.monto + (n.total || n.monto + n.igv), anula: c.anula || ['01', '02', '06'].includes(n.codTipNc) });
+      credito.set(k, (credito.get(k) ?? 0) + (n.total || n.monto + n.igv));
     }
     const porCobrar = facturas
       .filter((f) => f.tipo !== 'N. Crédito' && f.tipo !== 'N. Débito' && (f.estadoSunat === 'Emitida' || f.estadoSunat === 'Aceptada') && !f.pagada)
       .reduce((s, f) => {
         const total = f.total || f.monto + f.igv;
         const nc = f.correlativo ? credito.get(clave(f.tipoDocCodigo || (f.tipo === 'Boleta' ? '03' : '01'), f.serie, f.correlativo)) : undefined;
-        return s + (nc?.anula ? 0 : Math.max(0, total - (nc?.monto ?? 0)));
+        return s + Math.max(0, total - (nc ?? 0));
       }, 0);
     const gastoMantenimiento = ordenes.reduce((s, o) => s + o.costo, 0);
     const planillaNeta = empleados.reduce((s, e) => s + e.sueldoBase + e.bonos - e.descuentos, 0);
