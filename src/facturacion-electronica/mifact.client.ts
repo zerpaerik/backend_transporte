@@ -66,7 +66,7 @@ export class MifactClient {
 
   /** Emitir un comprobante (factura/boleta/NC/ND). */
   sendInvoice(payload: Record<string, any>) {
-    return this.post('SendInvoice', payload);
+    return this.post('SendInvoice', payload, 60000); // SUNAT puede demorar: más margen antes de cortar
   }
   /** Consultar el estado (MiFact + SUNAT) de un comprobante ya enviado. */
   getEstatusInvoice(payload: Record<string, any>) {

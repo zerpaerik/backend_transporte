@@ -54,7 +54,7 @@ export class GreClient {
 
   /** Emitir la guía del transportista. */
   sendGuia(payload: Record<string, any>) {
-    return this.post('SendGuia', payload);
+    return this.post('SendGuia', payload, 60000); // SUNAT puede demorar: más margen antes de cortar
   }
   getEstatusGuia(payload: Record<string, any>) {
     return this.post('GetEstatusGuia', payload);

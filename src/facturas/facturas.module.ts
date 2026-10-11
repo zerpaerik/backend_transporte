@@ -1,10 +1,10 @@
-import { Module, Injectable, NotFoundException, BadRequestException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
+import { Module, Injectable, NotFoundException, BadRequestException, ConflictException, ServiceUnavailableException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { CurrentUser, JwtUser } from '../common/decorators';
+import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 import { FacturacionElectronicaModule } from '../facturacion-electronica/facturacion-electronica.module';
 import { MifactClient } from '../facturacion-electronica/mifact.client';
 import { MifactConfigService } from '../facturacion-electronica/mifact-config.service';
@@ -167,6 +167,9 @@ const FACTURA_INCLUDE = {
   // Solo metadatos de los comprobantes de pago (el archivo se descarga aparte).
   comprobantesPago: { select: { id: true, nombre: true, mime: true, createdAt: true }, orderBy: { createdAt: 'asc' as const } },
 };
+
+// Comprobantes que se están enviando a MiFact en este momento (el backend corre en una instancia).
+const EMITIENDO = new Set<string>();
 
 @Injectable()
 class FacturasService {
@@ -410,7 +413,19 @@ class EmisionService {
     if (e.length) throw new BadRequestException('No se puede emitir: ' + e.join(' · ') + '.');
   }
 
+  // Un comprobante no puede enviarse dos veces a la vez (doble clic, dos pestañas): el segundo
+  // pedido se rechaza mientras el primero espera la respuesta de MiFact.
   async emitir(sedeId: string, id: string) {
+    if (EMITIENDO.has(id)) throw new ConflictException('Este comprobante ya se está enviando a SUNAT; espera el resultado.');
+    EMITIENDO.add(id);
+    try {
+      return await this.emitirUnaVez(sedeId, id);
+    } finally {
+      EMITIENDO.delete(id);
+    }
+  }
+
+  private async emitirUnaVez(sedeId: string, id: string) {
     const emisor = await this.emisor(sedeId);
     if (!emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
     if (!this.mifactCfg.integracionConfigurada) throw new BadRequestException(`Falta configurar MiFact para el ambiente "${this.mifactCfg.ambiente}".`);
@@ -445,29 +460,53 @@ class EmisionService {
     const cuentas = await this.prisma.cuentaBancaria.findMany({ where: { sedeId, activo: true }, orderBy: [{ orden: 'asc' }, { createdAt: 'asc' }] });
     const emisorConCuentas = { ...(emisor as any), cuentas };
 
-    // Reservar y enviar. Si MiFact responde que el número YA EXISTE en su BD (por un
-    // intento previo que llegó a MiFact, o por chocar con la numeración del ambiente),
-    // se avanza automáticamente al siguiente correlativo y se reintenta —igual que la GRE.
-    const esDuplicado = (r: any) => /ya existe|already exists|existe en la bd/i.test(String(r?.errors || r?.sunat_description || ''));
-    // Reusar el número de un intento previo; si no hay, reservar uno nuevo.
-    let correlativo = f.correlativo || (await this.correlativos.reservar(sedeId, tipoDoc, serie));
-    // Persistir la reserva ANTES de enviar: si el envío se corta, el reintento la reutiliza.
-    if (!f.correlativo) {
+    // NUMERACIÓN — regla para no duplicar comprobantes en SUNAT:
+    // · Si el comprobante ya tiene número de un intento anterior, se reenvía con ESE número. Si
+    //   MiFact dice que ya existe, es ese mismo envío anterior (llegó pero no se registró aquí):
+    //   se consulta su estado y se sincroniza. Nunca se reenvía con otro número.
+    // · Solo se usa un número nuevo si no tenía, o si el anterior fue RECHAZADO (104: SUNAT no lo
+    //   cuenta). Si un número recién reservado ya existe en MiFact (numeración atrasada respecto
+    //   de MiFact), se pasa al siguiente: este comprobante aún no se había enviado con ninguno.
+    const numeroPrevio = f.correlativo && f.estadoDocumento !== '104' ? f.correlativo : '';
+    let correlativo = numeroPrevio || (await this.correlativos.reservar(sedeId, tipoDoc, serie));
+    // Persistir el número ANTES de enviar: si la respuesta se pierde, el reintento usa el mismo.
+    if (correlativo !== f.correlativo || serie !== f.serie) {
       await this.prisma.factura.update({ where: { id }, data: { serie, correlativo, tipoDocCodigo: tipoDoc } });
     }
-    let payload: any;
+    const esDuplicado = (r: any) => /ya existe|already exists|existe en la bd/i.test(String(r?.errors || r?.sunat_description || ''));
     let calc: any;
     let resp: any;
     const MAX_INTENTOS = 10;
     for (let i = 0; i < MAX_INTENTOS; i++) {
+      let payload: any;
       ({ payload, calc } = this.mapper.sendInvoice(this.mapFactura(f, serie, correlativo), emisorConCuentas));
-      resp = await this.client.sendInvoice(payload);
+      try {
+        resp = await this.client.sendInvoice(payload);
+      } catch (err: any) {
+        // Timeout o error de red: no se sabe si MiFact lo recibió. Se consulta antes de responder
+        // y el número queda guardado en el comprobante para que un reintento no lo duplique.
+        const sync = await this.sincronizar(sedeId, id, f, serie, correlativo, tipoDoc, calc, emisor).catch(() => null);
+        if (sync) return sync;
+        throw new ServiceUnavailableException(
+          `${err?.message || 'No se pudo contactar a MiFact.'} No se pudo confirmar si ${serie}-${correlativo} llegó a MiFact: ` +
+          'espera unos minutos y usa "Estado" antes de volver a emitir (se reenviará con el mismo número, sin duplicar).',
+        );
+      }
       if (!esDuplicado(resp)) break;
-      // Número ocupado en MiFact: reservar el siguiente y reintentar con ese.
+      if (correlativo === numeroPrevio) {
+        const sync = await this.sincronizar(sedeId, id, f, serie, correlativo, tipoDoc, calc, emisor);
+        if (sync) return sync;
+        throw new BadRequestException(`MiFact indica que ${serie}-${correlativo} ya existe, pero no devolvió su estado. Revísalo en el portal de MiFact antes de volver a emitir.`);
+      }
       correlativo = await this.correlativos.reservar(sedeId, tipoDoc, serie);
+      await this.prisma.factura.update({ where: { id }, data: { serie, correlativo, tipoDocCodigo: tipoDoc } });
     }
-    const estadoDoc = String(resp.estado_documento || '');
+    return this.guardarRespuesta(sedeId, id, serie, correlativo, tipoDoc, calc, emisor, resp);
+  }
 
+  // Guarda en el comprobante el resultado de MiFact (envío o consulta de estado).
+  private async guardarRespuesta(sedeId: string, id: string, serie: string, correlativo: string, tipoDoc: string, calc: any, emisor: any, resp: any, nota = '') {
+    const estadoDoc = String(resp.estado_documento || '');
     await this.prisma.factura.update({
       where: { id },
       data: {
@@ -477,7 +516,7 @@ class EmisionService {
         porcDetraccion: calc.sujetoDetraccion ? (emisor.porcDetraccion ?? 4) : 0,
         codDetraccion: calc.sujetoDetraccion ? (emisor.codDetraccion || '027') : '',
         ctaDetraccion: calc.sujetoDetraccion ? (emisor.ctaDetraccion || '') : '',
-        estadoDocumento: estadoDoc, sunatDescripcion: resp.sunat_description || resp.errors || '',
+        estadoDocumento: estadoDoc, sunatDescripcion: nota || resp.sunat_description || resp.errors || '',
         sunatResponsecode: String(resp.sunat_responsecode || ''), hash: resp.codigo_hash || '',
         qr: resp.cadena_para_codigo_qr || '', ticket: resp.ticket_sunat || '',
         xml: resp.xml_enviado || null, cdr: resp.cdr_sunat || null,
@@ -485,7 +524,70 @@ class EmisionService {
       },
     });
     const factura = await this.cargar(sedeId, id);
-    return { factura, respuesta: { estado_documento: estadoDoc, errors: resp.errors || '', sunat_description: resp.sunat_description || '' } };
+    return { factura, respuesta: { estado_documento: estadoDoc, errors: estadoDoc ? '' : resp.errors || '', sunat_description: nota || resp.sunat_description || '' } };
+  }
+
+  // Si MiFact ya tiene el comprobante con ese número, toma su estado (sin reenviar). null si no lo tiene.
+  private async sincronizar(sedeId: string, id: string, f: any, serie: string, correlativo: string, tipoDoc: string, calc: any, emisor: any) {
+    const resp = await this.client.getEstatusInvoice(this.mapper.getEstatus(this.mapFactura(f, serie, correlativo), emisor as any));
+    if (!resp?.estado_documento) return null;
+    const nota = `Ya estaba registrado en MiFact (${serie}-${correlativo}); se sincronizó su estado sin reenviarlo.` + (resp.sunat_description ? ` ${resp.sunat_description}` : '');
+    return this.guardarRespuesta(sedeId, id, serie, correlativo, tipoDoc, calc, emisor, resp, nota);
+  }
+
+  // Busca comprobantes que existen en MiFact/SUNAT pero no en el sistema: los números que faltan
+  // ("huecos") dentro de cada serie. Con la lógica de reintento anterior, un envío cuya respuesta
+  // se perdía se reemitía con el número siguiente, dejando el primero duplicado en SUNAT y fuera
+  // del sistema. MiFact exige la fecha de emisión para consultar, así que cada hueco se prueba con
+  // las fechas de sus vecinos (el duplicado lleva la misma fecha que el comprobante que duplica).
+  async revisarNumeracion(sedeId: string) {
+    const emisor = await this.emisor(sedeId);
+    const emitidas = await this.prisma.factura.findMany({
+      where: { sedeId, correlativo: { not: '' } },
+      select: { id: true, tipo: true, tipoDocCodigo: true, serie: true, correlativo: true, fecha: true, cliente: true, ruc: true, total: true, moneda: true, estadoDocumento: true },
+    });
+    const porSerie = new Map<string, typeof emitidas>();
+    for (const f of emitidas) {
+      if (!/^\d+$/.test(f.correlativo)) continue;
+      const k = `${f.tipoDocCodigo}|${f.serie}`;
+      porSerie.set(k, [...(porSerie.get(k) || []), f]);
+    }
+    const MAX_CONSULTAS = 80;
+    let consultas = 0;
+    const hallazgos: any[] = [];
+    const libres: string[] = [];
+    let truncado = false;
+    for (const [k, fs] of porSerie) {
+      const [tipoDoc, serie] = k.split('|');
+      const orden = fs.sort((a, b) => Number(a.correlativo) - Number(b.correlativo));
+      for (let i = 1; i < orden.length; i++) {
+        const prev = orden[i - 1];
+        const next = orden[i];
+        for (let n = Number(prev.correlativo) + 1; n < Number(next.correlativo); n++) {
+          const correlativo = String(n).padStart(8, '0');
+          const fechas = [...new Set([this.fechaISO(next.fecha), this.fechaISO(prev.fecha)])];
+          let encontrado: any = null;
+          let fechaHallada = '';
+          for (const fecha of fechas) {
+            if (consultas >= MAX_CONSULTAS) { truncado = true; break; }
+            consultas++;
+            const r = await this.client.getEstatusInvoice({ NUM_NIF_EMIS: emisor.ruc, COD_TIP_CPE: tipoDoc, NUM_SERIE_CPE: serie, NUM_CORRE_CPE: correlativo, FEC_EMIS: fecha }).catch(() => null);
+            if (r?.estado_documento) { encontrado = r; fechaHallada = fecha; break; }
+          }
+          if (encontrado) {
+            hallazgos.push({
+              documento: `${serie}-${correlativo}`, tipoDoc, fecha: fechaHallada,
+              estado: String(encontrado.estado_documento), descripcion: encontrado.sunat_description || '',
+              // El duplicado suele ser del comprobante con el número siguiente (mismos datos y fecha).
+              probableDuplicadoDe: { documento: `${next.serie}-${next.correlativo}`, cliente: next.cliente, ruc: next.ruc, total: next.total, moneda: next.moneda, fecha: this.fechaISO(next.fecha) },
+            });
+          } else if (!truncado) {
+            libres.push(`${serie}-${correlativo}`);
+          }
+        }
+      }
+    }
+    return { consultas, truncado, hallazgos, libres };
   }
 
   async estado(sedeId: string, id: string) {
@@ -546,6 +648,8 @@ class EmisionService {
 class FacturasController {
   constructor(private readonly service: FacturasService, private readonly emision: EmisionService) {}
   @Get() findAll(@CurrentUser() u: JwtUser) { return this.service.findAll(u.sedeId); }
+  // Antes de ':id' para que Nest no lo tome como un id.
+  @Roles('Administrador') @Get('revisar-numeracion') revisarNumeracion(@CurrentUser() u: JwtUser) { return this.emision.revisarNumeracion(u.sedeId); }
   @Get(':id') findOne(@CurrentUser() u: JwtUser, @Param('id') id: string) { return this.service.findOne(u.sedeId, id); }
   @Post() create(@CurrentUser() u: JwtUser, @Body() dto: CreateFacturaDto) { return this.service.create(u.sedeId, dto); }
   @Patch(':id') update(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: UpdateFacturaDto) { return this.service.update(u.sedeId, id, dto); }

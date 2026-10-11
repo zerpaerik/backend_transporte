@@ -1,4 +1,4 @@
-import { Module, Injectable, NotFoundException, BadRequestException, Controller, Get, Post, Param, Body } from '@nestjs/common';
+import { Module, Injectable, NotFoundException, BadRequestException, ConflictException, ServiceUnavailableException, Controller, Get, Post, Param, Body } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +47,8 @@ class GuiaInputDto {
 class AnularGuiaDto { @IsString() @IsOptional() motivo?: string; }
 
 const TIPO_GUR = '31'; // guía de remisión del transportista
+// Viajes con una guía enviándose a MiFact en este momento (el backend corre en una instancia).
+const EMITIENDO_GRE = new Set<string>();
 
 @Injectable()
 class GuiasService {
@@ -193,37 +195,79 @@ class GuiasService {
     if (e.length) throw new BadRequestException('No se puede emitir la guía: ' + e.join(' · ') + '.');
   }
 
+  // Una guía por viaje a la vez: un doble clic no puede emitir dos guías del mismo traslado.
   async emitir(sedeId: string, viajeId: string, dto: GuiaInputDto) {
+    if (EMITIENDO_GRE.has(viajeId)) throw new ConflictException('Ya se está enviando una guía de este viaje; espera el resultado.');
+    EMITIENDO_GRE.add(viajeId);
+    try {
+      return await this.emitirUnaVez(sedeId, viajeId, dto);
+    } finally {
+      EMITIENDO_GRE.delete(viajeId);
+    }
+  }
+
+  private async emitirUnaVez(sedeId: string, viajeId: string, dto: GuiaInputDto) {
     const c = await this.ctx(sedeId, viajeId);
     if (!c.emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
     if (!this.cfg.greConfigurada) throw new BadRequestException(`Falta la URL de GRE de MiFact (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
     const serie = c.emisor.serieGuiaTransportista || 'V001';
+    const emisor = this.emisorMap(c.emisor);
     // Validar ANTES de reservar el correlativo (para no gastar numeración en un rechazo).
     this.preflightGre(this.armarInput(c, dto, serie, '00000000'));
 
-    // Reservar y enviar. Si MiFact responde que el número YA EXISTE (por intentos previos
-    // que llegaron a su BD), se avanza automáticamente al siguiente correlativo y se reintenta.
+    // Guía de este viaje que quedó sin confirmar (se envió pero no llegó la respuesta, o MiFact
+    // la rechazó por datos). Antes de emitir otra se consulta: si MiFact ya la tiene, se
+    // sincroniza y NO se emite una nueva; si no la tiene, se reutiliza ese registro y su número.
+    const pendiente = await this.prisma.guiaTransportista.findFirst({
+      where: { sedeId, viajeId, estadoDocumento: '', correlativo: { not: '' } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (pendiente) {
+      const st = await this.gre.getEstatusGuia(this.mapper.getEstatus(this.clave(pendiente), emisor)).catch(() => null);
+      if (!st) throw new ServiceUnavailableException(`No se pudo confirmar con MiFact el estado de la guía ${pendiente.serie}-${pendiente.correlativo} de este viaje. Intenta de nuevo en unos minutos.`);
+      if (st.estado_documento) {
+        await this.prisma.guiaTransportista.update({ where: { id: pendiente.id }, data: { estadoDocumento: String(st.estado_documento), sunatDescripcion: st.sunat_description || 'Sincronizada con MiFact.' } });
+        throw new ConflictException(`La guía ${pendiente.serie}-${pendiente.correlativo} de este viaje ya estaba registrada en MiFact (estado ${st.estado_documento}). Se actualizó en la lista y no se emitió otra.`);
+      }
+    }
+
+    // Si un número recién reservado ya existe en MiFact (numeración atrasada), se pasa al
+    // siguiente: esta guía todavía no se envió con ningún número, así que no se duplica.
     const esDuplicado = (r: any) => /ya existe|already exists|existe en la bd/i.test(String(r?.errors || r?.sunat_description || ''));
+    let correlativo = pendiente ? pendiente.correlativo : await this.correlativos.reservar(sedeId, TIPO_GUR, serie);
+    let guiaId = pendiente?.id || '';
     let input!: GreInput;
     let resp: any;
     const MAX_INTENTOS = 10;
     for (let i = 0; i < MAX_INTENTOS; i++) {
-      const correlativo = await this.correlativos.reservar(sedeId, TIPO_GUR, serie);
       input = this.armarInput(c, dto, serie, correlativo);
-      resp = await this.gre.sendGuia(this.mapper.sendGuia(input, this.emisorMap(c.emisor)));
+      // La guía se registra ANTES de enviarla: si la respuesta se pierde, queda en la lista como
+      // pendiente (con su número) y se puede consultar su estado en vez de emitir otra.
+      const data = { ...this.toData(sedeId, viajeId, input), estadoDocumento: '', sunatDescripcion: 'Enviando a MiFact…' };
+      guiaId = guiaId ? (await this.prisma.guiaTransportista.update({ where: { id: guiaId }, data })).id : (await this.prisma.guiaTransportista.create({ data })).id;
+      try {
+        resp = await this.gre.sendGuia(this.mapper.sendGuia(input, emisor));
+      } catch (err: any) {
+        const st = await this.gre.getEstatusGuia(this.mapper.getEstatus(this.clave(input), emisor)).catch(() => null);
+        if (st?.estado_documento) { resp = st; break; }
+        await this.prisma.guiaTransportista.update({ where: { id: guiaId }, data: { sunatDescripcion: 'Sin confirmar: no llegó la respuesta de MiFact. Consulta su estado.' } });
+        throw new ServiceUnavailableException(
+          `${err?.message || 'No se pudo contactar a MiFact.'} No se pudo confirmar si la guía ${serie}-${correlativo} llegó a MiFact: ` +
+          'espera unos minutos y consulta su estado en la lista antes de volver a emitir.',
+        );
+      }
       if (!esDuplicado(resp)) break;
+      correlativo = await this.correlativos.reservar(sedeId, TIPO_GUR, serie);
     }
-    const guia = await this.prisma.guiaTransportista.create({ data: this.toData(sedeId, viajeId, input) });
     const estadoDoc = String(resp.estado_documento || '');
-    await this.prisma.guiaTransportista.update({
-      where: { id: guia.id },
+    const actualizada = await this.prisma.guiaTransportista.update({
+      where: { id: guiaId },
       data: {
         estadoDocumento: estadoDoc, sunatDescripcion: resp.sunat_description || resp.errors || '',
         hash: resp.codigo_hash || '', cdr: resp.cdr_sunat || null, xml: resp.xml_enviado || null, emitidoEn: new Date(),
       },
     });
-    const actualizada = await this.prisma.guiaTransportista.findUnique({ where: { id: guia.id } });
-    return { guia: actualizada, respuesta: { estado_documento: estadoDoc, errors: resp.errors || '', sunat_description: resp.sunat_description || '' } };
+    return { guia: actualizada, respuesta: { estado_documento: estadoDoc, errors: estadoDoc ? '' : resp.errors || '', sunat_description: resp.sunat_description || '' } };
   }
 
   async listar(sedeId: string, viajeId: string) {
