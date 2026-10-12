@@ -58,7 +58,7 @@ export class MifactClient {
       throw new BadGatewayException(`MiFact ${metodo}: HTTP ${res.status} — ${texto.slice(0, 300)}`);
     }
     try {
-      return texto ? JSON.parse(texto) : {};
+      return repararTextos(texto ? JSON.parse(texto) : {});
     } catch {
       throw new BadGatewayException(`MiFact ${metodo}: respuesta no-JSON — ${texto.slice(0, 300)}`);
     }
@@ -84,4 +84,16 @@ export class MifactClient {
   sendMailInvoice(payload: Record<string, any>) {
     return this.post('SendMailInvoice', payload);
   }
+}
+
+// Algunos mensajes (los que vienen de SUNAT) llegan con los acentos dañados: UTF-8 leído como
+// Latin-1 ("autenticaciÃ³n"). Se reparan solo los textos con ese patrón y sin otros caracteres.
+function repararTextos<T>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (typeof v !== 'string' || v.length > 5000 || !/[ÃÂ][\u0080-\u00BF]/.test(v) || /[^\u0000-\u00FF]/.test(v)) continue;
+    const r = Buffer.from(v, 'latin1').toString('utf8');
+    if (!r.includes('\uFFFD')) (obj as Record<string, unknown>)[k] = r;
+  }
+  return obj;
 }
