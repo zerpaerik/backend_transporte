@@ -180,19 +180,18 @@ class CotizacionesService {
   }
 
   // Crea un viaje "Programado" por cada unidad de cada ítem, con los datos del servicio y la
-  // tarifa unitaria (con descuentos, en soles). Placa, conductor y contenedor quedan por asignar.
+  // tarifa unitaria (con descuentos, en la moneda de la cotización). Placa, conductor y contenedor quedan por asignar.
   async convertir(sedeId: string, id: string, dto: ConvertirDto) {
     const c = await this.findOne(sedeId, id);
     if (c.estado === 'Convertida') throw new BadRequestException(`Ya se crearon los viajes: ${c.viajes.join(', ')}.`);
     if (c.estado !== 'Aceptada') throw new BadRequestException('Solo se pasa a operaciones una cotización aceptada.');
-    const tc = c.moneda === 'USD' ? c.tipoCambio : 1;
     const codigos: string[] = [];
     for (const it of c.items) {
       const unidades = Math.max(1, Math.round(it.cantidad));
-      const tarifa = r2(it.precio * (1 - it.descuento / 100) * (1 - c.descuentoGlobal / 100) * tc);
+      const tarifa = r2(it.precio * (1 - it.descuento / 100) * (1 - c.descuentoGlobal / 100));
       for (let k = 0; k < unidades; k++) {
         const viaje: CreateViajeDto = {
-          placaTracto: '', cliente: c.cliente, operacion: it.operacion, tarifa,
+          placaTracto: '', cliente: c.cliente, operacion: it.operacion, tarifa, moneda: c.moneda,
           origen: it.origen, destino: it.destino, devolucion: it.devolucion, tamanio: it.tamanio, tipoCarga: it.tipoCarga || 'GENERAL',
           estado: 'Programado', observacion: `Cotización ${c.codigo}`,
           fechaViaje: dto.fechaViaje ? diaPeru(dto.fechaViaje).toISOString() : undefined,

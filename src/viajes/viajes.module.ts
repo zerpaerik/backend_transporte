@@ -1,6 +1,6 @@
 import { Module, Injectable, NotFoundException, Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartialType } from '@nestjs/mapped-types';
-import { IsDateString, IsOptional, IsString, IsNotEmpty, IsNumber, Min } from 'class-validator';
+import { IsDateString, IsIn, IsOptional, IsString, IsNotEmpty, IsNumber, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, JwtUser } from '../common/decorators';
 import { ComisionesModule, ComisionesService } from '../comisiones/comisiones.module';
@@ -12,6 +12,7 @@ export class CreateViajeDto {
   @IsString() @IsNotEmpty({ message: 'El cliente es obligatorio.' }) cliente: string;
   @IsString() @IsOptional() clienteFactura?: string;
   @IsNumber() @Min(0) @IsOptional() tarifa?: number;
+  @IsIn(['PEN', 'USD']) @IsOptional() moneda?: string; // moneda de la tarifa
   @IsString() @IsNotEmpty({ message: 'El tipo de operación es obligatorio.' }) operacion: string;
   // El contenedor es opcional: en importación se programa el viaje y se registra al recogerlo (editando).
   @IsString() @IsOptional() contenedor?: string;

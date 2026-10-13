@@ -32,6 +32,7 @@ import { ProveedoresModule } from './proveedores/proveedores.module';
 import { AgendaModule } from './agenda/agenda.module';
 import { DevolucionesModule } from './devoluciones/devoluciones.module';
 import { CotizacionesModule } from './cotizaciones/cotizaciones.module';
+import { DetraccionesModule } from './detracciones/detracciones.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { CotizacionesModule } from './cotizaciones/cotizaciones.module';
     PlanillasModule,
     DevolucionesModule,
     CotizacionesModule,
+    DetraccionesModule,
     CombustibleModule,
     ArchivosModule,
     PeajesModule,

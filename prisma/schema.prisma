@@ -363,6 +363,7 @@ model Viaje {
   clienteRuc        String    @default("")
   clienteDireccion  String    @default("")
   tarifa            Float     @default(0)
+  moneda            String    @default("PEN") // moneda de la tarifa: PEN | USD
   comisionChofer    Float     @default(0)
   comisionPagada    Boolean   @default(false)
   comisionFechaPago DateTime? @db.Date
@@ -542,6 +543,8 @@ model Factura {
   detraccionFecha       DateTime?                @db.Date // fecha del depósito
   detraccionNumero      String                   @default("") // N° de constancia de depósito (número de detracción)
   detraccionMonto       Float                    @default(0) // monto depositado, siempre en soles
+  detraccionLote        String                   @default("") // lote del archivo de pago masivo (TXT SUNAT) en que se incluyó
+  abonos                FacturaAbono[]
   // Respuesta SUNAT / MiFact
   estadoDocumento       String                   @default("") // 101 proceso · 102 aceptado · 103 obs · 104 rechazado · 105 anulado · 108 baja
   sunatDescripcion      String                   @default("")
@@ -817,4 +820,34 @@ model CotizacionItem {
 
   @@index([cotizacionId])
   @@map("cotizacion_items")
+}
+
+// Pagos (abonos) recibidos de una factura: uno solo si se pagó completa, varios si fueron pagos a cuenta.
+model FacturaAbono {
+  id        String   @id @default(uuid())
+  facturaId String
+  factura   Factura  @relation(fields: [facturaId], references: [id], onDelete: Cascade)
+  fecha     DateTime @db.Date
+  monto     Float // en la moneda del comprobante
+  nota      String   @default("") // banco, n° de operación, etc.
+  createdAt DateTime @default(now())
+
+  @@index([facturaId])
+  @@map("factura_abonos")
+}
+
+// Archivo plano de pago masivo de detracciones (formato SUNAT) generado por el sistema.
+model DetraccionLote {
+  id        String   @id @default(uuid())
+  sedeId    String
+  numero    String // AAAA + correlativo de 2 dígitos (p. ej. 202623)
+  total     Float    @default(0) // soles
+  cantidad  Int      @default(0)
+  facturas  String[] @default([]) // ids de las facturas incluidas
+  contenido String // texto del archivo
+  createdAt DateTime @default(now())
+
+  @@unique([sedeId, numero])
+  @@index([sedeId])
+  @@map("detraccion_lotes")
 }

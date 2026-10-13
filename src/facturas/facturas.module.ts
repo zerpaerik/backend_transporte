@@ -93,6 +93,14 @@ class PagoDto {
   @IsNumber() @Min(0) @IsOptional() montoCobrado?: number; // en la moneda del comprobante; por defecto, el neto
   @IsIn(['Cliente', 'Empresa']) @IsOptional() detraccionResponsable?: string; // si no viene, se deduce del monto cobrado
 }
+// Pago recibido (completo o a cuenta). cerrar = con este pago la factura queda cancelada.
+class AbonoDto {
+  @IsDateString() fecha: string;
+  @IsNumber() @Min(0.01) monto: number; // en la moneda del comprobante
+  @IsString() @IsOptional() nota?: string;
+  @IsBoolean() @IsOptional() cerrar?: boolean;
+  @IsIn(['Cliente', 'Empresa']) @IsOptional() detraccionResponsable?: string; // si no viene, se deduce de lo cobrado
+}
 // Depósito de la detracción en el Banco de la Nación. numero vacío = quitar el depósito.
 class DetraccionDto {
   @IsIn(['Cliente', 'Empresa']) @IsOptional() responsable?: string;
@@ -166,6 +174,7 @@ const FACTURA_INCLUDE = {
   serviciosVR: { orderBy: { orden: 'asc' as const } },
   // Solo metadatos de los comprobantes de pago (el archivo se descarga aparte).
   comprobantesPago: { select: { id: true, nombre: true, mime: true, createdAt: true }, orderBy: { createdAt: 'asc' as const } },
+  abonos: { orderBy: [{ fecha: 'asc' as const }, { createdAt: 'asc' as const }] },
 };
 
 // Comprobantes que se están enviando a MiFact en este momento (el backend corre en una instancia).
@@ -209,30 +218,86 @@ class FacturasService {
     await this.prisma.factura.update({ where: { id }, data: toData(dto) });
     return this.findOne(sedeId, id);
   }
-  async remove(sedeId: string, id: string) { await this.findOne(sedeId, id); await this.prisma.factura.delete({ where: { id } }); return { ok: true }; }
+  // Solo se borra un borrador que nunca se envió a MiFact. Uno enviado ya existe en SUNAT: se
+  // anula con comunicación de baja o nota de crédito, nunca se borra del sistema.
+  async remove(sedeId: string, id: string) {
+    const f = await this.findOne(sedeId, id);
+    if (f.correlativo || f.estadoDocumento) {
+      throw new BadRequestException(`${f.serie}-${f.correlativo || ''} ya se envió a SUNAT: no se puede eliminar. Anúlalo (baja o nota de crédito).`);
+    }
+    await this.prisma.factura.delete({ where: { id } });
+    return { ok: true };
+  }
 
   // --- Cobranzas ---
   async registrarPago(sedeId: string, id: string, dto: PagoDto) {
     const f = await this.findOne(sedeId, id);
     const data: any = {};
     if (dto.pagada) {
-      const total = f.total || f.monto + f.igv;
-      const detraccion = f.sujetoDetraccion ? f.montoDetraccion || 0 : 0;
-      const neto = r2(total - detraccion);
-      const cobrado = dto.montoCobrado !== undefined ? r2(dto.montoCobrado) : neto;
-      Object.assign(data, {
-        pagada: true,
-        fechaPago: dto.fechaPago ? new Date(dto.fechaPago) : new Date(),
-        notaPago: dto.notaPago ?? '',
-        montoCobrado: cobrado,
+      // Registra lo cobrado como un abono que cancela la factura (por defecto, lo que falta del neto).
+      const { neto } = this.cuentas(f);
+      const cobradoPrevio = r2(f.abonos.reduce((s: number, a: any) => s + a.monto, 0));
+      const monto = dto.montoCobrado !== undefined ? r2(dto.montoCobrado - cobradoPrevio) : r2(neto - cobradoPrevio);
+      return this.agregarAbono(sedeId, id, {
+        fecha: dto.fechaPago || new Date().toISOString().slice(0, 10), monto: Math.max(monto, 0.01), nota: dto.notaPago, cerrar: true,
+        detraccionResponsable: dto.detraccionResponsable,
       });
-      if (f.sujetoDetraccion) data.detraccionResponsable = dto.detraccionResponsable || responsableDetraccion(cobrado, neto, detraccion);
-    } else {
-      Object.assign(data, { pagada: false, fechaPago: null, notaPago: '', montoCobrado: 0 });
-      // Si el depósito de la detracción ya está registrado, se conserva quién lo hizo.
-      if (!f.detraccionNumero) data.detraccionResponsable = '';
     }
+    // Volver a pendiente: se conservan los abonos (lo cobrado a cuenta sigue contando).
+    Object.assign(data, { pagada: false });
+    // Si el depósito de la detracción ya está registrado, se conserva quién lo hizo.
+    if (!f.detraccionNumero) data.detraccionResponsable = '';
     await this.prisma.factura.update({ where: { id }, data });
+    return this.findOne(sedeId, id);
+  }
+
+  private cuentas(f: any) {
+    const total = f.total || f.monto + f.igv;
+    const detraccion = f.sujetoDetraccion ? f.montoDetraccion || 0 : 0;
+    return { total, detraccion, neto: r2(total - detraccion) };
+  }
+
+  // Lo cobrado = suma de los abonos; la fecha y nota de pago son las del último.
+  private async recalcularCobro(id: string, extra: Record<string, any> = {}) {
+    const abonos = await this.prisma.facturaAbono.findMany({ where: { facturaId: id }, orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }] });
+    const ultimo = abonos[abonos.length - 1];
+    await this.prisma.factura.update({
+      where: { id },
+      data: {
+        montoCobrado: r2(abonos.reduce((s, a) => s + a.monto, 0)),
+        fechaPago: ultimo ? ultimo.fecha : null,
+        notaPago: ultimo ? ultimo.nota : '',
+        ...extra,
+      },
+    });
+  }
+
+  // Pago completo o a cuenta. Con "cerrar" la factura queda pagada; si no, sigue por cobrar con su saldo.
+  async agregarAbono(sedeId: string, id: string, dto: AbonoDto) {
+    const f = await this.findOne(sedeId, id);
+    if (!f.correlativo || !['102', '103'].includes(f.estadoDocumento)) throw new BadRequestException('Solo se registran pagos de comprobantes aceptados por SUNAT.');
+    if (f.pagada) throw new BadRequestException('La factura ya está pagada. Márcala como pendiente para registrar otro pago.');
+    await this.prisma.facturaAbono.create({ data: { facturaId: id, fecha: new Date(dto.fecha), monto: r2(dto.monto), nota: dto.nota?.trim() ?? '' } });
+    const extra: Record<string, any> = {};
+    if (dto.cerrar) {
+      extra.pagada = true;
+      if (f.sujetoDetraccion) {
+        const { neto, detraccion } = this.cuentas(f);
+        const cobrado = r2(f.abonos.reduce((s: number, a: any) => s + a.monto, 0) + dto.monto);
+        extra.detraccionResponsable = dto.detraccionResponsable || responsableDetraccion(cobrado, neto, detraccion);
+      }
+    }
+    await this.recalcularCobro(id, extra);
+    return this.findOne(sedeId, id);
+  }
+
+  // Quitar un abono reabre la factura (vuelve a por cobrar con el saldo que corresponda).
+  async quitarAbono(sedeId: string, id: string, abonoId: string) {
+    const f = await this.findOne(sedeId, id);
+    const a = await this.prisma.facturaAbono.findFirst({ where: { id: abonoId, facturaId: id } });
+    if (!a) throw new NotFoundException('Pago no encontrado');
+    await this.prisma.facturaAbono.delete({ where: { id: abonoId } });
+    await this.recalcularCobro(id, { pagada: false, ...(f.detraccionNumero ? {} : { detraccionResponsable: '' }) });
     return this.findOne(sedeId, id);
   }
 
@@ -663,6 +728,8 @@ class FacturasController {
   @Post(':id/correo') correo(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: CorreoDto) { return this.emision.correo(u.sedeId, id, dto.correo); }
   // --- Cobranzas ---
   @Patch(':id/pago') pago(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: PagoDto) { return this.service.registrarPago(u.sedeId, id, dto); }
+  @Post(':id/abonos') abono(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: AbonoDto) { return this.service.agregarAbono(u.sedeId, id, dto); }
+  @Delete(':id/abonos/:aid') quitarAbono(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('aid') aid: string) { return this.service.quitarAbono(u.sedeId, id, aid); }
   @Patch(':id/detraccion') detraccion(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: DetraccionDto) { return this.service.registrarDetraccion(u.sedeId, id, dto); }
   @Post(':id/comprobantes-pago') subirComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Body() dto: ComprobantePagoDto) { return this.service.agregarComprobantePago(u.sedeId, id, dto); }
   @Get(':id/comprobantes-pago/:cid') bajarComprobante(@CurrentUser() u: JwtUser, @Param('id') id: string, @Param('cid') cid: string) { return this.service.descargarComprobantePago(u.sedeId, id, cid); }
