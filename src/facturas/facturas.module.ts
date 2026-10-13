@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsNotEmpty, Min, ValidateNested } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { inflateRawSync } from 'zlib';
 import { Roles, CurrentUser, JwtUser } from '../common/decorators';
 import { FacturacionElectronicaModule } from '../facturacion-electronica/facturacion-electronica.module';
 import { MifactClient } from '../facturacion-electronica/mifact.client';
@@ -176,6 +177,25 @@ const FACTURA_INCLUDE = {
   comprobantesPago: { select: { id: true, nombre: true, mime: true, createdAt: true }, orderBy: { createdAt: 'asc' as const } },
   abonos: { orderBy: [{ fecha: 'asc' as const }, { createdAt: 'asc' as const }] },
 };
+
+// MiFact devuelve el XML como texto, en base64, o en base64 de un ZIP que lo contiene
+// (GetInvoice). Se entrega siempre el XML plano.
+function xmlPlano(xml: string): Buffer {
+  if (/^\s*</.test(xml)) return Buffer.from(xml, 'utf8');
+  const bin = Buffer.from(xml, 'base64');
+  if (bin.readUInt32LE(0) !== 0x04034b50) return bin; // no es ZIP: ya es el XML
+  // ZIP con un solo archivo: se lee el primer registro. Si los tamaños van al final (bit 3),
+  // se toman del directorio central.
+  const metodo = bin.readUInt16LE(8);
+  let tam = bin.readUInt32LE(18);
+  const inicio = 30 + bin.readUInt16LE(26) + bin.readUInt16LE(28);
+  if (bin.readUInt16LE(6) & 0x08 || !tam) {
+    const cd = bin.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    if (cd >= 0) tam = bin.readUInt32LE(cd + 20);
+  }
+  const datos = bin.subarray(inicio, inicio + tam);
+  return metodo === 8 ? inflateRawSync(datos) : Buffer.from(datos);
+}
 
 // Comprobantes que se están enviando a MiFact en este momento (el backend corre en una instancia).
 const EMITIENDO = new Set<string>();
@@ -681,13 +701,13 @@ class EmisionService {
     // Usa el XML guardado al emitir; si no está, lo pide a MiFact.
     let xml = f.xml || '';
     if (!xml) {
-      const resp = await this.client.getInvoice(this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { cdr: true }));
+      // Si no se guardó al emitir (p. ej. el estado llegó por consulta), se pide a MiFact y se guarda.
+      const resp = await this.client.getInvoice(this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { xml: true, cdr: true }));
       xml = resp.xml_enviado || '';
+      if (xml) await this.prisma.factura.update({ where: { id }, data: { xml, ...(f.cdr ? {} : { cdr: resp.cdr_sunat || null }) } });
     }
     if (!xml) throw new BadRequestException('No hay XML disponible para este comprobante.');
-    // MiFact puede devolver el XML como texto o en base64; se normaliza a base64 para descargar.
-    const base64 = /^\s*</.test(xml) ? Buffer.from(xml, 'utf8').toString('base64') : xml;
-    return { nombre: `${f.serie}-${f.correlativo}.xml`, mime: 'application/xml', base64 };
+    return { nombre: `${f.serie}-${f.correlativo}.xml`, mime: 'application/xml', base64: xmlPlano(xml).toString('base64') };
   }
 
   async anular(sedeId: string, id: string, motivo: string) {

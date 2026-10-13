@@ -309,8 +309,16 @@ export class MifactMapper {
   getEstatus(f: FacturaMap, e: EmisorMap) {
     return this.clave(f, e);
   }
-  getInvoice(f: FacturaMap, e: EmisorMap, opts: { pdf?: boolean; cdr?: boolean } = {}) {
-    return { ...this.clave(f, e), RETORNA_PDF: opts.pdf ? 'true' : 'false', RETORNA_XML_CDR: opts.cdr ? 'true' : 'false', COD_FORM_IMPR: e.formatoImpresion || '001' };
+  // RETORNA_XML_ENVIO devuelve el XML del comprobante (xml_enviado); RETORNA_XML_CDR solo la
+  // constancia de SUNAT (cdr_sunat). Son parámetros distintos.
+  getInvoice(f: FacturaMap, e: EmisorMap, opts: { pdf?: boolean; xml?: boolean; cdr?: boolean } = {}) {
+    return {
+      ...this.clave(f, e),
+      RETORNA_PDF: opts.pdf ? 'true' : 'false',
+      RETORNA_XML_ENVIO: opts.xml ? 'true' : 'false',
+      RETORNA_XML_CDR: opts.cdr ? 'true' : 'false',
+      COD_FORM_IMPR: e.formatoImpresion || '001',
+    };
   }
   lowInvoice(f: FacturaMap, e: EmisorMap, motivo: string) {
     return { COD_TIP_NIF_EMIS: '6', ...this.clave(f, e), TXT_DESC_MTVO: motivo || 'ANULACION', COD_PTO_VENTA: e.puntoVenta || 'SISTEMA' };
