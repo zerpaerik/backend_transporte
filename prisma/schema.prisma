@@ -598,6 +598,7 @@ model FacturaComprobantePago {
   facturaId String
   nombre    String   @default("comprobante")
   mime      String   @default("application/octet-stream")
+  tipo      String   @default("pago") // pago (constancia del depósito) | documento (guía firmada, conformidad, etc.)
   archivo   Bytes
   createdAt DateTime @default(now())
 

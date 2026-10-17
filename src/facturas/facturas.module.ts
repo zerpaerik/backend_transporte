@@ -119,10 +119,19 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 function responsableDetraccion(montoCobrado: number, neto: number, detraccion: number): 'Cliente' | 'Empresa' {
   return montoCobrado >= neto + detraccion / 2 ? 'Empresa' : 'Cliente';
 }
+// Archivos adjuntos de la factura: constancias de pago o documentos que pide el cliente para
+// pagar (guías firmadas, conformidad del servicio…). Los documentos aceptan también Word y Excel.
+const MIME_PAGO = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const MIME_DOCUMENTO = [
+  ...MIME_PAGO,
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
 class ComprobantePagoDto {
   @IsString() @IsNotEmpty() base64: string;
   @IsString() @IsOptional() nombre?: string;
-  @IsIn(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']) mime: string;
+  @IsIn(MIME_DOCUMENTO, { message: 'Formato no permitido: usa JPG, PNG, PDF, Word o Excel.' }) mime: string;
+  @IsIn(['pago', 'documento']) @IsOptional() tipo?: string;
 }
 
 // Campos escalares (sin items) que van directo a la tabla.
@@ -174,7 +183,7 @@ const FACTURA_INCLUDE = {
   items: { orderBy: { orden: 'asc' as const } },
   serviciosVR: { orderBy: { orden: 'asc' as const } },
   // Solo metadatos de los comprobantes de pago (el archivo se descarga aparte).
-  comprobantesPago: { select: { id: true, nombre: true, mime: true, createdAt: true }, orderBy: { createdAt: 'asc' as const } },
+  comprobantesPago: { select: { id: true, nombre: true, mime: true, tipo: true, createdAt: true }, orderBy: { createdAt: 'asc' as const } },
   abonos: { orderBy: [{ fecha: 'asc' as const }, { createdAt: 'asc' as const }] },
 };
 
@@ -346,7 +355,9 @@ class FacturasService {
     const archivo = Buffer.from(dto.base64, 'base64');
     if (!archivo.length) throw new BadRequestException('El archivo está vacío.');
     if (archivo.length > 10 * 1024 * 1024) throw new BadRequestException('El archivo supera 10 MB.');
-    await this.prisma.facturaComprobantePago.create({ data: { facturaId: id, archivo, nombre: dto.nombre || 'comprobante', mime: dto.mime } });
+    const tipo = dto.tipo === 'documento' ? 'documento' : 'pago';
+    if (tipo === 'pago' && !MIME_PAGO.includes(dto.mime)) throw new BadRequestException('El comprobante de pago debe ser JPG, PNG o PDF.');
+    await this.prisma.facturaComprobantePago.create({ data: { facturaId: id, archivo, nombre: dto.nombre || (tipo === 'documento' ? 'documento' : 'comprobante'), mime: dto.mime, tipo } });
     return this.findOne(sedeId, id);
   }
   async descargarComprobantePago(sedeId: string, id: string, cid: string) {
