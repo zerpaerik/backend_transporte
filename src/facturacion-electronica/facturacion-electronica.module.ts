@@ -164,6 +164,15 @@ class EmisorService {
 
   async update(sedeId: string, dto: UpdateEmisorDto) {
     const { config } = await this.get(sedeId); // garantiza que exista la fila
+    // Candado: no se puede guardar en esta empresa el RUC de OTRA empresa del sistema (pasaba al
+    // cambiar de empresa con la pantalla abierta: se pisaban los datos del emisor de la otra).
+    const rucNuevo = dto.ruc?.trim();
+    if (rucNuevo) {
+      const otra = await this.prisma.sede.findFirst({ where: { ruc: rucNuevo, id: { not: sedeId } }, select: { nombre: true } });
+      if (otra) {
+        throw new BadRequestException(`El RUC ${rucNuevo} es de ${otra.nombre}, no de la empresa en sesión. Cambia a esa empresa (arriba) y vuelve a abrir Datos del emisor.`);
+      }
+    }
     // El token pertenece a un RUC: si cambia el RUC, el token cargado deja de servir y se borra.
     const cambiaRuc = dto.ruc !== undefined && dto.ruc.trim() !== String(config.ruc || '').trim();
     await this.prisma.emisorConfig.update({ where: { sedeId }, data: { ...dto, ...(cambiaRuc ? { mifactToken: '' } : {}) } });
