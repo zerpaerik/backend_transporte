@@ -524,7 +524,13 @@ class EmisionService {
   private async emitirUnaVez(sedeId: string, id: string) {
     const emisor = await this.emisor(sedeId);
     if (!emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
-    if (!this.mifactCfg.integracionConfigurada) throw new BadRequestException(`Falta configurar MiFact para el ambiente "${this.mifactCfg.ambiente}".`);
+    if (!this.mifactCfg.integracionConfiguradaPara(emisor)) {
+      throw new BadRequestException(
+        this.mifactCfg.esProd
+          ? `Falta el token de MiFact del RUC ${emisor.ruc || '(sin RUC)'}: cárgalo en Datos del emisor.`
+          : `Falta configurar MiFact para el ambiente "${this.mifactCfg.ambiente}".`,
+      );
+    }
     const f = await this.cargar(sedeId, id);
     // Estados terminales: no se reemite (MiFact ya lo tiene). Solo se puede (re)emitir
     // un comprobante Sin emitir ('') o Rechazado ('104', tras corregirlo).
@@ -577,7 +583,7 @@ class EmisionService {
       let payload: any;
       ({ payload, calc } = this.mapper.sendInvoice(this.mapFactura(f, serie, correlativo), emisorConCuentas));
       try {
-        resp = await this.client.sendInvoice(payload);
+        resp = await this.client.sendInvoice(emisor, payload);
       } catch (err: any) {
         // Timeout o error de red: no se sabe si MiFact lo recibió. Se consulta antes de responder
         // y el número queda guardado en el comprobante para que un reintento no lo duplique.
@@ -625,7 +631,7 @@ class EmisionService {
 
   // Si MiFact ya tiene el comprobante con ese número, toma su estado (sin reenviar). null si no lo tiene.
   private async sincronizar(sedeId: string, id: string, f: any, serie: string, correlativo: string, tipoDoc: string, calc: any, emisor: any) {
-    const resp = await this.client.getEstatusInvoice(this.mapper.getEstatus(this.mapFactura(f, serie, correlativo), emisor as any));
+    const resp = await this.client.getEstatusInvoice(emisor, this.mapper.getEstatus(this.mapFactura(f, serie, correlativo), emisor as any));
     if (!resp?.estado_documento) return null;
     const nota = `Ya estaba registrado en MiFact (${serie}-${correlativo}); se sincronizó su estado sin reenviarlo.` + (resp.sunat_description ? ` ${resp.sunat_description}` : '');
     return this.guardarRespuesta(sedeId, id, serie, correlativo, tipoDoc, calc, emisor, resp, nota);
@@ -667,7 +673,7 @@ class EmisionService {
           for (const fecha of fechas) {
             if (consultas >= MAX_CONSULTAS) { truncado = true; break; }
             consultas++;
-            const r = await this.client.getEstatusInvoice({ NUM_NIF_EMIS: emisor.ruc, COD_TIP_CPE: tipoDoc, NUM_SERIE_CPE: serie, NUM_CORRE_CPE: correlativo, FEC_EMIS: fecha }).catch(() => null);
+            const r = await this.client.getEstatusInvoice(emisor, { NUM_NIF_EMIS: emisor.ruc, COD_TIP_CPE: tipoDoc, NUM_SERIE_CPE: serie, NUM_CORRE_CPE: correlativo, FEC_EMIS: fecha }).catch(() => null);
             if (r?.estado_documento) { encontrado = r; fechaHallada = fecha; break; }
           }
           if (encontrado) {
@@ -690,7 +696,7 @@ class EmisionService {
     const emisor = await this.emisor(sedeId);
     const f = await this.cargar(sedeId, id);
     if (!f.correlativo) throw new BadRequestException('El comprobante aún no fue emitido.');
-    const resp = await this.client.getEstatusInvoice(this.mapper.getEstatus(this.mapFactura(f, f.serie, f.correlativo), emisor as any));
+    const resp = await this.client.getEstatusInvoice(emisor, this.mapper.getEstatus(this.mapFactura(f, f.serie, f.correlativo), emisor as any));
     const estadoDoc = String(resp.estado_documento || f.estadoDocumento || '');
     await this.prisma.factura.update({ where: { id }, data: { estadoDocumento: estadoDoc, sunatDescripcion: resp.sunat_description || f.sunatDescripcion, estadoSunat: this.estadoSunatDe(estadoDoc) } });
     return this.cargar(sedeId, id);
@@ -700,7 +706,7 @@ class EmisionService {
     const emisor = await this.emisor(sedeId);
     const f = await this.cargar(sedeId, id);
     if (!f.correlativo) throw new BadRequestException('El comprobante aún no fue emitido.');
-    const resp = await this.client.getInvoice(this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { pdf: true }));
+    const resp = await this.client.getInvoice(emisor, this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { pdf: true }));
     if (!resp.pdf_bytes) throw new BadRequestException('MiFact no devolvió el PDF del comprobante.');
     return { nombre: `${f.serie}-${f.correlativo}.pdf`, mime: 'application/pdf', base64: resp.pdf_bytes };
   }
@@ -713,7 +719,7 @@ class EmisionService {
     let xml = f.xml || '';
     if (!xml) {
       // Si no se guardó al emitir (p. ej. el estado llegó por consulta), se pide a MiFact y se guarda.
-      const resp = await this.client.getInvoice(this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { xml: true, cdr: true }));
+      const resp = await this.client.getInvoice(emisor, this.mapper.getInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, { xml: true, cdr: true }));
       xml = resp.xml_enviado || '';
       if (xml) await this.prisma.factura.update({ where: { id }, data: { xml, ...(f.cdr ? {} : { cdr: resp.cdr_sunat || null }) } });
     }
@@ -725,7 +731,7 @@ class EmisionService {
     const emisor = await this.emisor(sedeId);
     const f = await this.cargar(sedeId, id);
     if (!f.correlativo) throw new BadRequestException('El comprobante aún no fue emitido.');
-    const resp = await this.client.lowInvoice(this.mapper.lowInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, motivo || 'ANULACION'));
+    const resp = await this.client.lowInvoice(emisor, this.mapper.lowInvoice(this.mapFactura(f, f.serie, f.correlativo), emisor as any, motivo || 'ANULACION'));
     const estadoDoc = String(resp.estado_documento || '105');
     await this.prisma.factura.update({ where: { id }, data: { estadoDocumento: estadoDoc, estadoSunat: 'Anulada', sunatDescripcion: resp.sunat_description || 'Anulación solicitada', ticket: resp.ticket_sunat || f.ticket } });
     return this.cargar(sedeId, id);
@@ -735,7 +741,7 @@ class EmisionService {
     const emisor = await this.emisor(sedeId);
     const f = await this.cargar(sedeId, id);
     if (!f.correlativo) throw new BadRequestException('El comprobante aún no fue emitido.');
-    const resp = await this.client.sendMailInvoice(this.mapper.sendMail(this.mapFactura(f, f.serie, f.correlativo), emisor as any, correo));
+    const resp = await this.client.sendMailInvoice(emisor, this.mapper.sendMail(this.mapFactura(f, f.serie, f.correlativo), emisor as any, correo));
     return { ok: !resp.errors, mensaje: resp.errors || 'Correo enviado' };
   }
 }

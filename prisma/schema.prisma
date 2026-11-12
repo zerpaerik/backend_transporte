@@ -651,6 +651,9 @@ model EmisorConfig {
   formatoImpresion       String   @default("001") // COD_FORM_IMPR: formato del PDF en MiFact (001 básico o el personalizado)
   correoEnvio            String   @default("") // copia opcional al emitir
   activo                 Boolean  @default(false) // habilita la emisión electrónica para la sede
+  // Token de PRODUCCIÓN de MiFact de este RUC (cada empresa tiene el suyo). Secreto: la API
+  // nunca lo devuelve al frontend. Vacío = se usa la variable de entorno del servidor.
+  mifactToken            String   @default("")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

@@ -125,7 +125,7 @@ class GuiasService {
       codigo: (viaje as any).codigo || '',
       ambiente: this.cfg.ambiente,
       esProd: this.cfg.esProd,
-      greConfigurada: this.cfg.greConfigurada,
+      greConfigurada: this.cfg.greConfiguradaPara(emisor),
       serie,
       correlativo: await this.correlativos.peek(sedeId, TIPO_GUR, serie),
       fechaTraslado: viaje.fechaViaje ? this.fechaISO(viaje.fechaViaje) : hoy,
@@ -150,7 +150,7 @@ class GuiasService {
     const serie = c.emisor.serieGuiaTransportista || 'V001';
     const correlativo = await this.correlativos.peek(sedeId, TIPO_GUR, serie);
     const payload = this.mapper.sendGuia(this.armarInput(c, dto, serie, correlativo), this.emisorMap(c.emisor));
-    return { ambiente: this.cfg.ambiente, greConfigurada: this.cfg.greConfigurada, payload };
+    return { ambiente: this.cfg.ambiente, greConfigurada: this.cfg.greConfiguradaPara(c.emisor), payload };
   }
 
   private toData(sedeId: string, viajeId: string, input: GreInput) {
@@ -209,7 +209,8 @@ class GuiasService {
   private async emitirUnaVez(sedeId: string, viajeId: string, dto: GuiaInputDto) {
     const c = await this.ctx(sedeId, viajeId);
     if (!c.emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
-    if (!this.cfg.greConfigurada) throw new BadRequestException(`Falta la URL de GRE de MiFact (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
+    if (!this.cfg.greBaseUrl) throw new BadRequestException(`Falta la URL de GRE de MiFact (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
+    if (!this.cfg.greConfiguradaPara(c.emisor)) throw new BadRequestException(`Falta el token de MiFact del RUC ${c.emisor.ruc || '(sin RUC)'}: cárgalo en Datos del emisor.`);
     const serie = c.emisor.serieGuiaTransportista || 'V001';
     const emisor = this.emisorMap(c.emisor);
     // Validar ANTES de reservar el correlativo (para no gastar numeración en un rechazo).
@@ -223,7 +224,7 @@ class GuiasService {
       orderBy: { createdAt: 'desc' },
     });
     if (pendiente) {
-      const st = await this.gre.getEstatusGuia(this.mapper.getEstatus(this.clave(pendiente), emisor)).catch(() => null);
+      const st = await this.gre.getEstatusGuia(c.emisor, this.mapper.getEstatus(this.clave(pendiente), emisor)).catch(() => null);
       if (!st) throw new ServiceUnavailableException(`No se pudo confirmar con MiFact el estado de la guía ${pendiente.serie}-${pendiente.correlativo} de este viaje. Intenta de nuevo en unos minutos.`);
       if (st.estado_documento) {
         await this.prisma.guiaTransportista.update({ where: { id: pendiente.id }, data: { estadoDocumento: String(st.estado_documento), sunatDescripcion: st.sunat_description || 'Sincronizada con MiFact.' } });
@@ -246,9 +247,9 @@ class GuiasService {
       const data = { ...this.toData(sedeId, viajeId, input), estadoDocumento: '', sunatDescripcion: 'Enviando a MiFact…' };
       guiaId = guiaId ? (await this.prisma.guiaTransportista.update({ where: { id: guiaId }, data })).id : (await this.prisma.guiaTransportista.create({ data })).id;
       try {
-        resp = await this.gre.sendGuia(this.mapper.sendGuia(input, emisor));
+        resp = await this.gre.sendGuia(c.emisor, this.mapper.sendGuia(input, emisor));
       } catch (err: any) {
-        const st = await this.gre.getEstatusGuia(this.mapper.getEstatus(this.clave(input), emisor)).catch(() => null);
+        const st = await this.gre.getEstatusGuia(c.emisor, this.mapper.getEstatus(this.clave(input), emisor)).catch(() => null);
         if (st?.estado_documento) { resp = st; break; }
         await this.prisma.guiaTransportista.update({ where: { id: guiaId }, data: { sunatDescripcion: 'Sin confirmar: no llegó la respuesta de MiFact. Consulta su estado.' } });
         throw new ServiceUnavailableException(
@@ -288,27 +289,30 @@ class GuiasService {
   private async emisorDe(sedeId: string) {
     const e = await this.prisma.emisorConfig.findUnique({ where: { sedeId } });
     if (!e) throw new BadRequestException('Configura primero los datos del emisor.');
-    return this.emisorMap(e);
+    return e;
   }
 
   async estado(sedeId: string, id: string) {
     const g = await this.cargar(sedeId, id);
     if (!g.correlativo) throw new BadRequestException('La guía aún no fue emitida.');
-    const resp = await this.gre.getEstatusGuia(this.mapper.getEstatus(this.clave(g), await this.emisorDe(sedeId)));
+    const e = await this.emisorDe(sedeId);
+    const resp = await this.gre.getEstatusGuia(e, this.mapper.getEstatus(this.clave(g), this.emisorMap(e)));
     await this.prisma.guiaTransportista.update({ where: { id }, data: { estadoDocumento: String(resp.estado_documento || g.estadoDocumento || ''), sunatDescripcion: resp.sunat_description || g.sunatDescripcion } });
     return this.cargar(sedeId, id);
   }
   async pdf(sedeId: string, id: string) {
     const g = await this.cargar(sedeId, id);
     if (!g.correlativo) throw new BadRequestException('La guía aún no fue emitida.');
-    const resp = await this.gre.getGuia(this.mapper.getGuia(this.clave(g), await this.emisorDe(sedeId), { pdf: true }));
+    const e = await this.emisorDe(sedeId);
+    const resp = await this.gre.getGuia(e, this.mapper.getGuia(this.clave(g), this.emisorMap(e), { pdf: true }));
     if (!resp.pdf_bytes) throw new BadRequestException('MiFact no devolvió el PDF de la guía.');
     return { nombre: `${g.serie}-${g.correlativo}.pdf`, mime: 'application/pdf', base64: resp.pdf_bytes };
   }
   async anular(sedeId: string, id: string, motivo: string) {
     const g = await this.cargar(sedeId, id);
     if (!g.correlativo) throw new BadRequestException('La guía aún no fue emitida.');
-    const resp = await this.gre.lowGuia(this.mapper.lowGuia(this.clave(g), await this.emisorDe(sedeId), motivo || 'ERROR EN EMISION'));
+    const e = await this.emisorDe(sedeId);
+    const resp = await this.gre.lowGuia(e, this.mapper.lowGuia(this.clave(g), this.emisorMap(e), motivo || 'ERROR EN EMISION'));
     await this.prisma.guiaTransportista.update({ where: { id }, data: { estadoDocumento: String(resp.estado_documento || '105'), sunatDescripcion: resp.sunat_description || 'Baja registrada en el portal de MiFact (la anulación ante SUNAT es por Clave SOL).' } });
     return this.cargar(sedeId, id);
   }

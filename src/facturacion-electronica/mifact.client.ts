@@ -1,12 +1,12 @@
 import { Injectable, Logger, BadGatewayException, GatewayTimeoutException, ServiceUnavailableException } from '@nestjs/common';
-import { MifactConfigService } from './mifact-config.service';
+import { MifactConfigService, type CredencialMifact } from './mifact-config.service';
 
 /**
  * Cliente HTTP hacia el API JSON de MiFact (servicio invoiceService.svc).
  *
  * - El token va DENTRO del cuerpo JSON (campo "TOKEN"), no en un header.
- * - La URL base y el token se resuelven por ambiente (demo/prod) desde variables
- *   de entorno vía MifactConfigService; este cliente nunca los hardcodea.
+ * - Cada empresa (RUC) tiene su propio token: cada método recibe el emisor y el token se
+ *   resuelve con MifactConfigService (demo/prod). La URL base es la misma para todas.
  * - Errores de red / timeout se traducen a excepciones claras para la UI.
  *
  * Este cliente solo ENVÍA lo que se le pasa. El armado del payload (mapper) y las
@@ -22,16 +22,25 @@ export class MifactClient {
     return this.cfg.ambiente;
   }
 
-  private async post(metodo: string, payload: Record<string, any>, timeoutMs = 30000): Promise<any> {
+  // URL y token del ambiente actual para esta empresa.
+  private destino(emisor: CredencialMifact) {
     if (!this.cfg.baseUrl) {
       throw new ServiceUnavailableException(`MiFact: falta la URL base para el ambiente "${this.cfg.ambiente}".`);
     }
-    if (!this.cfg.token) {
-      throw new ServiceUnavailableException(`MiFact: falta el token para el ambiente "${this.cfg.ambiente}".`);
+    const { token } = this.cfg.tokenDe(emisor);
+    if (!token) {
+      throw new ServiceUnavailableException(
+        this.cfg.esProd
+          ? `MiFact: falta el token de producción del RUC ${emisor.ruc || '(sin RUC)'}. Cárgalo en Datos del emisor.`
+          : 'MiFact: falta el token demo (MIFACT_TOKEN_DEMO) en el servidor.',
+      );
     }
+    return { baseUrl: this.cfg.baseUrl, token };
+  }
 
-    const url = this.cfg.baseUrl + metodo;
-    const cuerpo = JSON.stringify({ TOKEN: this.cfg.token, ...payload });
+  private async post(metodo: string, payload: Record<string, any>, destino: { baseUrl: string; token: string }, timeoutMs = 30000): Promise<any> {
+    const url = destino.baseUrl + metodo;
+    const cuerpo = JSON.stringify({ TOKEN: destino.token, ...payload });
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -65,24 +74,47 @@ export class MifactClient {
   }
 
   /** Emitir un comprobante (factura/boleta/NC/ND). */
-  sendInvoice(payload: Record<string, any>) {
-    return this.post('SendInvoice', payload, 60000); // SUNAT puede demorar: más margen antes de cortar
+  sendInvoice(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('SendInvoice', payload, this.destino(emisor), 60000); // SUNAT puede demorar: más margen antes de cortar
   }
   /** Consultar el estado (MiFact + SUNAT) de un comprobante ya enviado. */
-  getEstatusInvoice(payload: Record<string, any>) {
-    return this.post('GetEstatusInvoice', payload);
+  getEstatusInvoice(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('GetEstatusInvoice', payload, this.destino(emisor));
   }
   /** Obtener PDF / XML / CDR de un comprobante. */
-  getInvoice(payload: Record<string, any>) {
-    return this.post('GetInvoice', payload);
+  getInvoice(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('GetInvoice', payload, this.destino(emisor));
   }
   /** Anular / dar de baja un comprobante. */
-  lowInvoice(payload: Record<string, any>) {
-    return this.post('LowInvoice', payload);
+  lowInvoice(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('LowInvoice', payload, this.destino(emisor));
   }
   /** Reenviar el comprobante por correo. */
-  sendMailInvoice(payload: Record<string, any>) {
-    return this.post('SendMailInvoice', payload);
+  sendMailInvoice(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('SendMailInvoice', payload, this.destino(emisor));
+  }
+
+  /**
+   * Comprueba si un token de PRODUCCIÓN corresponde a un RUC, sin emitir nada: consulta en
+   * producción un comprobante que no existe (FZ99-99999999). Es solo lectura, así que se puede
+   * usar aunque el sistema esté en demo. Respuestas de MiFact:
+   *   · token correcto      → "El documento consultado no existe"
+   *   · token de otro RUC   → "TOKEN INCORRECTO PARA <RUC>"
+   *   · token mal copiado   → "Invalid length for a Base-64 ..."
+   */
+  async probarToken(token: string, ruc: string): Promise<{ ok: boolean | null; mensaje: string }> {
+    if (!this.cfg.baseUrlProd) throw new ServiceUnavailableException('MiFact: falta la URL de producción (MIFACT_BASE_URL_PROD) en el servidor.');
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    const r = await this.post(
+      'GetEstatusInvoice',
+      { NUM_NIF_EMIS: ruc, COD_TIP_CPE: '01', NUM_SERIE_CPE: 'FZ99', NUM_CORRE_CPE: '99999999', FEC_EMIS: hoy },
+      { baseUrl: this.cfg.baseUrlProd, token },
+    );
+    const err = String(r?.errors || '');
+    if (r?.estado_documento || /no existe/i.test(err)) return { ok: true, mensaje: 'El token corresponde a este RUC.' };
+    // Token mal copiado: MiFact no lo puede descifrar ("Base-64", "data to decrypt", "padding").
+    if (/token|base-64|decrypt|padding/i.test(err)) return { ok: false, mensaje: `MiFact rechazó el token para el RUC ${ruc}: ${err.replace(/^Error\s*:\s*/i, '')}` };
+    return { ok: null, mensaje: err ? `Respuesta no reconocida de MiFact: ${err}` : 'MiFact no devolvió un resultado reconocible.' };
   }
 }
 

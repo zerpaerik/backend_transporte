@@ -1,9 +1,10 @@
 import { Injectable, Logger, BadGatewayException, GatewayTimeoutException, ServiceUnavailableException } from '@nestjs/common';
-import { MifactConfigService } from './mifact-config.service';
+import { MifactConfigService, type CredencialMifact } from './mifact-config.service';
 
 /**
  * Cliente HTTP hacia el servicio de Guía de Remisión de MiFact (GuiaRemision.svc).
- * Igual que MifactClient pero contra la URL de guías (que MiFact entrega aparte).
+ * Igual que MifactClient pero contra la URL de guías (que MiFact entrega aparte). Usa el mismo
+ * token de la empresa (RUC) que emite: cada método recibe el emisor.
  * SUNAT no tiene ambiente demo de GRE: se valida el armado del JSON y se cierra en
  * producción con cuidado.
  */
@@ -17,16 +18,21 @@ export class GreClient {
     return this.cfg.ambiente;
   }
 
-  private async post(metodo: string, payload: Record<string, any>, timeoutMs = 30000): Promise<any> {
+  private async post(metodo: string, emisor: CredencialMifact, payload: Record<string, any>, timeoutMs = 30000): Promise<any> {
     if (!this.cfg.greBaseUrl) {
       throw new ServiceUnavailableException(`GRE: falta la URL del servicio de guías (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
     }
-    if (!this.cfg.token) {
-      throw new ServiceUnavailableException(`GRE: falta el token para el ambiente "${this.cfg.ambiente}".`);
+    const { token } = this.cfg.tokenDe(emisor);
+    if (!token) {
+      throw new ServiceUnavailableException(
+        this.cfg.esProd
+          ? `GRE: falta el token de producción del RUC ${emisor.ruc || '(sin RUC)'}. Cárgalo en Datos del emisor.`
+          : 'GRE: falta el token demo (MIFACT_TOKEN_DEMO) en el servidor.',
+      );
     }
 
     const url = this.cfg.greBaseUrl + metodo;
-    const cuerpo = JSON.stringify({ TOKEN: this.cfg.token, ...payload });
+    const cuerpo = JSON.stringify({ TOKEN: token, ...payload });
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -53,20 +59,20 @@ export class GreClient {
   }
 
   /** Emitir la guía del transportista. */
-  sendGuia(payload: Record<string, any>) {
-    return this.post('SendGuia', payload, 60000); // SUNAT puede demorar: más margen antes de cortar
+  sendGuia(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('SendGuia', emisor, payload, 60000); // SUNAT puede demorar: más margen antes de cortar
   }
-  getEstatusGuia(payload: Record<string, any>) {
-    return this.post('GetEstatusGuia', payload);
+  getEstatusGuia(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('GetEstatusGuia', emisor, payload);
   }
-  getGuia(payload: Record<string, any>) {
-    return this.post('GetGuia', payload);
+  getGuia(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('GetGuia', emisor, payload);
   }
-  lowGuia(payload: Record<string, any>) {
-    return this.post('LowGuia', payload);
+  lowGuia(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('LowGuia', emisor, payload);
   }
-  sendMailGuia(payload: Record<string, any>) {
-    return this.post('SendMailGuia', payload);
+  sendMailGuia(emisor: CredencialMifact, payload: Record<string, any>) {
+    return this.post('SendMailGuia', emisor, payload);
   }
 }
 
