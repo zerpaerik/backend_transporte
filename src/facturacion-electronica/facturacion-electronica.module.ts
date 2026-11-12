@@ -120,7 +120,8 @@ class EmisorService {
     const prueba = await this.client.probarToken(limpio, ruc).catch((e: any) => ({ ok: null as boolean | null, mensaje: `No se pudo verificar con MiFact: ${e?.message || 'error de red'}` }));
     if (prueba.ok === false) {
       // ¿De qué empresa es? Ayuda a ubicarlo en la sede correcta.
-      const otra = (await this.identificar(limpio).catch(() => [])).find((r) => r.ok && r.ruc !== ruc);
+      const candidatas: { ok: boolean | null; ruc: string; nombre: string }[] = await this.identificar(limpio).catch(() => []);
+      const otra = candidatas.find((r) => r.ok && r.ruc !== ruc);
       throw new BadRequestException(
         `Este token no corresponde al RUC ${ruc}.` + (otra ? ` Es el token de ${otra.nombre} (RUC ${otra.ruc}): cárgalo en esa empresa.` : ` ${prueba.mensaje}`),
       );
