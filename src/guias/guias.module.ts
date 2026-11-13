@@ -209,7 +209,7 @@ class GuiasService {
   private async emitirUnaVez(sedeId: string, viajeId: string, dto: GuiaInputDto) {
     const c = await this.ctx(sedeId, viajeId);
     if (!c.emisor.activo) throw new BadRequestException('La emisión electrónica no está habilitada para esta sede.');
-    if (!this.cfg.greBaseUrl) throw new BadRequestException(`Falta la URL de GRE de MiFact (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
+    if (!this.cfg.greBaseUrlDe(c.emisor)) throw new BadRequestException(`Falta la URL de GRE de MiFact del RUC ${c.emisor.ruc || '(sin RUC)'} para el ambiente "${this.cfg.ambiente}".`);
     if (!this.cfg.greConfiguradaPara(c.emisor)) throw new BadRequestException(`Falta el token de MiFact del RUC ${c.emisor.ruc || '(sin RUC)'}: cárgalo en Datos del emisor.`);
     const serie = c.emisor.serieGuiaTransportista || 'V001';
     const emisor = this.emisorMap(c.emisor);

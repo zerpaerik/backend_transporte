@@ -5,8 +5,8 @@ import { MifactConfigService, type CredencialMifact } from './mifact-config.serv
  * Cliente HTTP hacia el API JSON de MiFact (servicio invoiceService.svc).
  *
  * - El token va DENTRO del cuerpo JSON (campo "TOKEN"), no en un header.
- * - Cada empresa (RUC) tiene su propio token: cada método recibe el emisor y el token se
- *   resuelve con MifactConfigService (demo/prod). La URL base es la misma para todas.
+ * - Cada empresa (RUC) tiene su propio token y su propia URL de producción: cada método recibe
+ *   el emisor y ambos se resuelven con MifactConfigService (demo/prod).
  * - Errores de red / timeout se traducen a excepciones claras para la UI.
  *
  * Este cliente solo ENVÍA lo que se le pasa. El armado del payload (mapper) y las
@@ -24,8 +24,13 @@ export class MifactClient {
 
   // URL y token del ambiente actual para esta empresa.
   private destino(emisor: CredencialMifact) {
-    if (!this.cfg.baseUrl) {
-      throw new ServiceUnavailableException(`MiFact: falta la URL base para el ambiente "${this.cfg.ambiente}".`);
+    const baseUrl = this.cfg.baseUrlDe(emisor);
+    if (!baseUrl) {
+      throw new ServiceUnavailableException(
+        this.cfg.esProd
+          ? `MiFact: falta la URL del servicio del RUC ${emisor.ruc || '(sin RUC)'}. Cárgala en Datos del emisor.`
+          : 'MiFact: falta la URL demo (MIFACT_BASE_URL_DEMO) en el servidor.',
+      );
     }
     const { token } = this.cfg.tokenDe(emisor);
     if (!token) {
@@ -35,7 +40,7 @@ export class MifactClient {
           : 'MiFact: falta el token demo (MIFACT_TOKEN_DEMO) en el servidor.',
       );
     }
-    return { baseUrl: this.cfg.baseUrl, token };
+    return { baseUrl, token };
   }
 
   private async post(metodo: string, payload: Record<string, any>, destino: { baseUrl: string; token: string }, timeoutMs = 30000): Promise<any> {
@@ -95,25 +100,26 @@ export class MifactClient {
   }
 
   /**
-   * Comprueba si un token de PRODUCCIÓN corresponde a un RUC, sin emitir nada: consulta en
-   * producción un comprobante que no existe (FZ99-99999999). Es solo lectura, así que se puede
-   * usar aunque el sistema esté en demo. Respuestas de MiFact:
+   * Comprueba si un token de PRODUCCIÓN corresponde a un RUC, sin emitir nada: consulta en la URL
+   * de producción de la empresa un comprobante que no existe (FZ99-99999999). Es solo lectura, así
+   * que se puede usar aunque el sistema esté en demo. Respuestas de MiFact:
    *   · token correcto      → "El documento consultado no existe"
    *   · token de otro RUC   → "TOKEN INCORRECTO PARA <RUC>"
    *   · token mal copiado   → "Invalid length for a Base-64 ..."
    */
-  async probarToken(token: string, ruc: string): Promise<{ ok: boolean | null; mensaje: string }> {
-    if (!this.cfg.baseUrlProd) throw new ServiceUnavailableException('MiFact: falta la URL de producción (MIFACT_BASE_URL_PROD) en el servidor.');
+  async probarToken(token: string, ruc: string, urlProd: string): Promise<{ ok: boolean | null; mensaje: string }> {
+    const baseUrl = this.cfg.conBarra(urlProd);
+    if (!baseUrl) throw new ServiceUnavailableException(`MiFact: falta la URL de producción del RUC ${ruc}. Cárgala en Datos del emisor.`);
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
     const r = await this.post(
       'GetEstatusInvoice',
       { NUM_NIF_EMIS: ruc, COD_TIP_CPE: '01', NUM_SERIE_CPE: 'FZ99', NUM_CORRE_CPE: '99999999', FEC_EMIS: hoy },
-      { baseUrl: this.cfg.baseUrlProd, token },
+      { baseUrl, token },
     );
     const err = String(r?.errors || '');
     if (r?.estado_documento || /no existe/i.test(err)) return { ok: true, mensaje: 'El token corresponde a este RUC.' };
-    // Token mal copiado: MiFact no lo puede descifrar ("Base-64", "data to decrypt", "padding").
-    if (/token|base-64|decrypt|padding/i.test(err)) return { ok: false, mensaje: `MiFact rechazó el token para el RUC ${ruc}: ${err.replace(/^Error\s*:\s*/i, '')}` };
+    // Token mal copiado: MiFact no lo puede descifrar ("Base-64", "data to decrypt", "padding", "Bad Data").
+    if (/token|base-64|decrypt|padding|bad data/i.test(err)) return { ok: false, mensaje: `MiFact rechazó el token para el RUC ${ruc}: ${err.replace(/^Error\s*:\s*/i, '')}` };
     return { ok: null, mensaje: err ? `Respuesta no reconocida de MiFact: ${err}` : 'MiFact no devolvió un resultado reconocible.' };
   }
 }

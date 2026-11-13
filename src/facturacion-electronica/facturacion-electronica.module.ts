@@ -2,7 +2,7 @@ import { Module, Injectable, Controller, Get, Post, Patch, Delete, Body, BadRequ
 import { IsBoolean, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { Roles, CurrentUser, JwtUser } from '../common/decorators';
-import { MifactConfigService } from './mifact-config.service';
+import { MifactConfigService, URL_MIFACT_FORMATO } from './mifact-config.service';
 import { MifactClient } from './mifact.client';
 import { CorrelativosService } from './correlativos.service';
 import { MifactMapper } from './mifact.mapper';
@@ -39,6 +39,10 @@ const TOKEN_FORMATO = /^[A-Za-z0-9+/=]{8,200}$/;
 class TokenDto {
   @IsString() @IsNotEmpty() @Matches(TOKEN_FORMATO, { message: 'El token no tiene el formato de MiFact (letras, números, + / =, sin espacios).' }) token: string;
 }
+// URL de producción del servicio de facturación de MiFact de la empresa (MiFact asigna una por RUC).
+class UrlDto {
+  @IsString() @IsNotEmpty() @Matches(URL_MIFACT_FORMATO, { message: 'La URL debe ser la del servicio de MiFact, p. ej. https://mifact.net.pe/mifactapi48/invoiceService.svc/' }) url: string;
+}
 class ProbarTokenDto {
   // Si viene, se prueba ESTE token contra todas las empresas (para saber de cuál es).
   // Si no, se prueba el token actual de la sede contra su RUC.
@@ -73,6 +77,17 @@ class EmisorService {
     return { cargado: !!token, origen, final: token ? token.slice(-4) : '' };
   }
 
+  // URL de PRODUCCIÓN del servicio de la empresa (no es secreta) y de dónde sale.
+  private servicioInfo(config: any) {
+    return this.mifact.urlProdDe(config);
+  }
+
+  // Fila del emisor de la sede, completa (con token y URL). Solo para uso interno.
+  private async filaDe(sedeId: string) {
+    await this.get(sedeId); // la crea si no existe
+    return (await this.prisma.emisorConfig.findUnique({ where: { sedeId } }))!;
+  }
+
   private seriePorTipo(config: any, tipoDoc: string): string {
     if (tipoDoc === '03') return config.serieBoleta || 'BN01';
     if (tipoDoc === '07') return config.serieNotaCredito || config.serieFactura || 'FN01';
@@ -99,10 +114,12 @@ class EmisorService {
       });
     }
     const correlativos = await this.correlativosDe(sedeId, config);
-    // El token es secreto: se quita de la configuración que va al navegador.
-    const { mifactToken: _secreto, ...publico } = config;
+    // El token es secreto: se quita de la configuración que va al navegador. La URL va aparte
+    // (en "servicio"): se cambia solo desde su propio campo, que la valida.
+    const { mifactToken: _secreto, mifactUrlProd: _url, ...publico } = config;
     void _secreto;
-    return { config: publico, correlativos, token: this.tokenInfo(config), ...this.ambienteInfo(config) };
+    void _url;
+    return { config: publico, correlativos, token: this.tokenInfo(config), servicio: this.servicioInfo(config), ...this.ambienteInfo(config) };
   }
 
   private rucDe(config: any) {
@@ -114,20 +131,54 @@ class EmisorService {
   // Guarda el token de producción de la empresa. Antes se verifica con MiFact que corresponda a su
   // RUC: un token de otra empresa se rechaza aquí y no al momento de emitir.
   async setToken(sedeId: string, token: string) {
-    const { config } = await this.get(sedeId);
+    const config = await this.filaDe(sedeId);
     const ruc = this.rucDe(config);
     const limpio = token.trim();
-    const prueba = await this.client.probarToken(limpio, ruc).catch((e: any) => ({ ok: null as boolean | null, mensaje: `No se pudo verificar con MiFact: ${e?.message || 'error de red'}` }));
+    const { url } = this.mifact.urlProdDe(config);
+    const prueba = await this.client.probarToken(limpio, ruc, url).catch((e: any) => ({ ok: null as boolean | null, mensaje: `No se pudo verificar con MiFact: ${e?.message || 'error de red'}` }));
     if (prueba.ok === false) {
       // ¿De qué empresa es? Ayuda a ubicarlo en la sede correcta.
       const candidatas: { ok: boolean | null; ruc: string; nombre: string }[] = await this.identificar(limpio).catch(() => []);
       const otra = candidatas.find((r) => r.ok && r.ruc !== ruc);
       throw new BadRequestException(
-        `Este token no corresponde al RUC ${ruc}.` + (otra ? ` Es el token de ${otra.nombre} (RUC ${otra.ruc}): cárgalo en esa empresa.` : ` ${prueba.mensaje}`),
+        `Este token no corresponde al RUC ${ruc}.` +
+          (otra
+            ? ` Es el token de ${otra.nombre} (RUC ${otra.ruc}): cárgalo en esa empresa.`
+            : ` ${prueba.mensaje}. Se probó en ${url}: revisa que sea la URL del servicio que MiFact te dio para este RUC (cada empresa puede tener la suya).`),
       );
     }
     await this.prisma.emisorConfig.update({ where: { sedeId }, data: { mifactToken: limpio } });
     return { ...(await this.get(sedeId)), verificacion: prueba };
+  }
+
+  // Guarda la URL de producción del servicio de la empresa. Antes se comprueba que responda como
+  // MiFact (una URL mal escrita se frena aquí y no al emitir) y, si hay token, que lo acepte.
+  async setUrl(sedeId: string, url: string) {
+    const config = await this.filaDe(sedeId);
+    const ruc = this.rucDe(config);
+    const limpia = this.mifact.conBarra(url);
+    const { token } = this.mifact.tokenProdDe(config);
+    // Sin token se prueba con uno de relleno: MiFact responde "token incorrecto" en JSON, y con eso
+    // basta para saber que la URL es la de su servicio.
+    let prueba: { ok: boolean | null; mensaje: string };
+    try {
+      prueba = await this.client.probarToken(token || 'AAAAAAAAAAAAAAAAAAAAAA==', ruc, limpia);
+    } catch (e: any) {
+      throw new BadRequestException(`La URL no responde como el servicio de MiFact (${e?.message || 'error de red'}). Revísala y vuelve a intentar.`);
+    }
+    await this.prisma.emisorConfig.update({ where: { sedeId }, data: { mifactUrlProd: limpia } });
+    const verificacion = token
+      ? prueba.ok === false
+        ? { ok: false, mensaje: `URL guardada, pero el token actual de la empresa no sirve en ella: ${prueba.mensaje}. Carga el token que MiFact te dio para esta URL.` }
+        : prueba
+      : { ok: null, mensaje: 'URL guardada. Ahora carga el token de esta empresa.' };
+    return { ...(await this.get(sedeId)), verificacion };
+  }
+
+  async quitarUrl(sedeId: string) {
+    await this.get(sedeId);
+    await this.prisma.emisorConfig.update({ where: { sedeId }, data: { mifactUrlProd: '' } });
+    return this.get(sedeId);
   }
 
   async quitarToken(sedeId: string) {
@@ -140,25 +191,31 @@ class EmisorService {
   private async identificar(token: string) {
     const [sedes, emisores] = await Promise.all([
       this.prisma.sede.findMany({ where: { activa: true }, orderBy: { orden: 'asc' }, select: { id: true, nombre: true, ruc: true } }),
-      this.prisma.emisorConfig.findMany({ select: { sedeId: true, ruc: true, razonSocial: true } }),
+      this.prisma.emisorConfig.findMany({ select: { sedeId: true, ruc: true, razonSocial: true, mifactUrlProd: true } }),
     ]);
     const empresas = sedes
       .map((s) => {
         const e = emisores.find((x) => x.sedeId === s.id);
-        return { sedeId: s.id, nombre: e?.razonSocial || s.nombre, ruc: (e?.ruc || s.ruc || '').trim() };
+        return { sedeId: s.id, nombre: e?.razonSocial || s.nombre, ruc: (e?.ruc || s.ruc || '').trim(), url: this.mifact.urlProdDe(e).url };
       })
       .filter((x) => /^\d{11}$/.test(x.ruc));
-    return Promise.all(empresas.map(async (x) => ({ ...x, ...(await this.client.probarToken(token, x.ruc)) })));
+    // Cada empresa se prueba en SU URL de producción.
+    return Promise.all(
+      empresas.map(async ({ url, ...x }) => ({
+        ...x,
+        ...(await this.client.probarToken(token, x.ruc, url).catch((e: any) => ({ ok: null as boolean | null, mensaje: `No se pudo consultar a MiFact: ${e?.message || 'error de red'}` }))),
+      })),
+    );
   }
 
   // Sin token: prueba el de la sede contra su RUC. Con token: dice a qué empresa pertenece.
   async probarToken(sedeId: string, token?: string) {
     if (token?.trim()) return { resultados: await this.identificar(token.trim()) };
-    const { config } = await this.get(sedeId);
+    const config = await this.filaDe(sedeId);
     const ruc = this.rucDe(config);
-    const actual = this.mifact.tokenProdDe(await this.prisma.emisorConfig.findUnique({ where: { sedeId } }));
+    const actual = this.mifact.tokenProdDe(config);
     if (!actual.token) throw new BadRequestException(`La empresa (RUC ${ruc}) no tiene token de producción cargado.`);
-    const r = await this.client.probarToken(actual.token, ruc);
+    const r = await this.client.probarToken(actual.token, ruc, this.mifact.urlProdDe(config).url);
     return { resultados: [{ sedeId, nombre: config.razonSocial, ruc, ...r }] };
   }
 
@@ -173,9 +230,9 @@ class EmisorService {
         throw new BadRequestException(`El RUC ${rucNuevo} es de ${otra.nombre}, no de la empresa en sesión. Cambia a esa empresa (arriba) y vuelve a abrir Datos del emisor.`);
       }
     }
-    // El token pertenece a un RUC: si cambia el RUC, el token cargado deja de servir y se borra.
+    // El token y la URL pertenecen a un RUC: si cambia el RUC, dejan de servir y se borran.
     const cambiaRuc = dto.ruc !== undefined && dto.ruc.trim() !== String(config.ruc || '').trim();
-    await this.prisma.emisorConfig.update({ where: { sedeId }, data: { ...dto, ...(cambiaRuc ? { mifactToken: '' } : {}) } });
+    await this.prisma.emisorConfig.update({ where: { sedeId }, data: { ...dto, ...(cambiaRuc ? { mifactToken: '', mifactUrlProd: '' } : {}) } });
     return this.get(sedeId);
   }
 
@@ -206,6 +263,9 @@ class EmisorController {
   // Token de producción de MiFact de la empresa en sesión.
   @Patch('token') setToken(@CurrentUser() u: JwtUser, @Body() dto: TokenDto) { return this.service.setToken(u.sedeId, dto.token); }
   @Delete('token') quitarToken(@CurrentUser() u: JwtUser) { return this.service.quitarToken(u.sedeId); }
+  // URL de producción del servicio de MiFact de la empresa en sesión (vacía = la del servidor).
+  @Patch('url') setUrl(@CurrentUser() u: JwtUser, @Body() dto: UrlDto) { return this.service.setUrl(u.sedeId, dto.url); }
+  @Delete('url') quitarUrl(@CurrentUser() u: JwtUser) { return this.service.quitarUrl(u.sedeId); }
   @Post('token/probar') probarToken(@CurrentUser() u: JwtUser, @Body() dto: ProbarTokenDto) { return this.service.probarToken(u.sedeId, dto.token); }
 }
 

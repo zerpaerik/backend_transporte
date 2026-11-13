@@ -654,6 +654,10 @@ model EmisorConfig {
   // Token de PRODUCCIÓN de MiFact de este RUC (cada empresa tiene el suyo). Secreto: la API
   // nunca lo devuelve al frontend. Vacío = se usa la variable de entorno del servidor.
   mifactToken            String   @default("")
+  // URL de PRODUCCIÓN del servicio de facturación de MiFact para este RUC (MiFact asigna una por
+  // empresa, p. ej. https://mifact.net.pe/mifactapi48/invoiceService.svc/). Vacío = la del servidor
+  // (MIFACT_BASE_URL_PROD).
+  mifactUrlProd          String   @default("")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

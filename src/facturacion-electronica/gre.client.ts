@@ -19,8 +19,9 @@ export class GreClient {
   }
 
   private async post(metodo: string, emisor: CredencialMifact, payload: Record<string, any>, timeoutMs = 30000): Promise<any> {
-    if (!this.cfg.greBaseUrl) {
-      throw new ServiceUnavailableException(`GRE: falta la URL del servicio de guías (MIFACT_GRE_BASE_URL) para el ambiente "${this.cfg.ambiente}".`);
+    const baseUrl = this.cfg.greBaseUrlDe(emisor);
+    if (!baseUrl) {
+      throw new ServiceUnavailableException(`GRE: falta la URL del servicio de guías del RUC ${emisor.ruc || '(sin RUC)'} para el ambiente "${this.cfg.ambiente}".`);
     }
     const { token } = this.cfg.tokenDe(emisor);
     if (!token) {
@@ -31,7 +32,7 @@ export class GreClient {
       );
     }
 
-    const url = this.cfg.greBaseUrl + metodo;
+    const url = baseUrl + metodo;
     const cuerpo = JSON.stringify({ TOKEN: token, ...payload });
 
     const ctrl = new AbortController();

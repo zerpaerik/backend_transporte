@@ -527,7 +527,7 @@ class EmisionService {
     if (!this.mifactCfg.integracionConfiguradaPara(emisor)) {
       throw new BadRequestException(
         this.mifactCfg.esProd
-          ? `Falta el token de MiFact del RUC ${emisor.ruc || '(sin RUC)'}: cárgalo en Datos del emisor.`
+          ? `Falta el token o la URL de MiFact del RUC ${emisor.ruc || '(sin RUC)'}: cárgalos en Datos del emisor.`
           : `Falta configurar MiFact para el ambiente "${this.mifactCfg.ambiente}".`,
       );
     }
